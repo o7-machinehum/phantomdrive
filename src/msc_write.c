@@ -4,137 +4,127 @@
 #include "msc_write.h"
 #include "emmc_ops.h"
 #include "msc_diag.h"
+#include "write_profile.h"
+#include "CH56x_ecdc.h"
 #include "CH56x_usb20_devbulk.h"
 #include <string.h>
 
 extern void bot_set_sense(uint8_t key, uint8_t asc, uint8_t status);
 extern void bot_send_csw(void);
 
-#ifdef DEBUG
-typedef struct {
-    uint64_t usb_cycles;
-    uint64_t snoop_cycles;
-    uint64_t crypt_cycles;
-    uint64_t sd_cycles;
-    uint64_t dat0_cycles;
-    uint32_t total_start;
-    uint32_t chunks;
-    uint16_t sectors;
-} write_profile_t;
-
-static write_profile_t write_prof;
-
-static inline uint32_t write_prof_now(void)
+static void ecdc_prepare_write_sector(uint32_t write_lba)
 {
-    return ~bsp_get_SysTickCNT_LSB();
+    ovrd_ecdc_disable_data_path();
+    ovrd_ecdc_set_sector_nonce(write_lba);
+    ECDC_Excute(RAM_TO_PERIPHERAL_ENCRY, MODE_LITTLE_ENDIAN);
 }
 
-static inline uint32_t write_prof_elapsed(uint32_t start)
+static uint8_t write_chunk_to_sd_ecdc(uint8_t *buf, uint32_t write_lba, uint16_t *reqnum)
 {
-    return write_prof_now() - start;
+    uint32_t cmd_arg_val;
+    uint16_t cmd_set_val;
+    uint8_t status;
+    uint16_t next_sector = 1;
+    uint32_t prof_start;
+    uint32_t wait_start;
+
+    write_profile_emmc_start(*reqnum);
+
+    if (write_lba > TF_EMMCParam.EMMCSecNum) {
+        write_profile_emmc_invalid_addr();
+        return OP_INVALID_ADD;
+    }
+
+    cmd_arg_val = write_lba;
+    cmd_set_val = RB_EMMC_CKIDX |
+                  RB_EMMC_CKCRC |
+                  RESP_TYPE_48  |
+                  EMMC_CMD25;
+    prof_start = write_profile_now();
+    EMMCSendCmd(cmd_arg_val, cmd_set_val);
+    while (1) {
+        status = CheckCMDComp(&TF_EMMCParam);
+        if (status != CMD_NULL)
+            break;
+    }
+    write_profile_emmc_cmd25(prof_start, status);
+    if (status == CMD_FAILED)
+        return OP_FAILED;
+
+    ecdc_prepare_write_sector(write_lba);
+    R32_EMMC_TRAN_MODE = RB_EMMC_DMA_DIR;
+    R32_EMMC_DMA_BEG1 = (uint32_t)buf;
+    R32_EMMC_BLOCK_CFG = (TF_EMMCParam.EMMCSecSize << 16) | *reqnum;
+
+    prof_start = write_profile_now();
+    wait_start = prof_start;
+    while (1) {
+        if (R16_EMMC_INT_FG & RB_EMMC_IF_BKGAP) {
+            write_profile_emmc_bkgap_wait(wait_start);
+            if (next_sector < *reqnum)
+                ecdc_prepare_write_sector(write_lba + next_sector++);
+
+            R32_EMMC_RESPONSE3 = 0;
+            R16_EMMC_INT_FG = RB_EMMC_IF_BKGAP;
+            wait_start = write_profile_now();
+        } else if (R16_EMMC_INT_FG & RB_EMMC_IF_TRANDONE) {
+            write_profile_emmc_trandone_wait(wait_start);
+            ovrd_ecdc_disable_data_path();
+            R16_EMMC_INT_FG = RB_EMMC_IF_CMDDONE;
+            cmd_arg_val = 0;
+            cmd_set_val = RB_EMMC_CKIDX |
+                          RB_EMMC_CKCRC |
+                          RESP_TYPE_R1b |
+                          EMMC_CMD12;
+            EMMCSendCmd(cmd_arg_val, cmd_set_val);
+            break;
+        }
+
+        if (TF_EMMCParam.EMMCOpErr) {
+            ovrd_ecdc_disable_data_path();
+            write_profile_emmc_data(prof_start, 1);
+            return CMD_FAILED;
+        }
+    }
+
+    write_profile_emmc_data(prof_start, 0);
+    prof_start = write_profile_now();
+    while (1) {
+        status = CheckCMDComp(&TF_EMMCParam);
+        if (status != CMD_NULL)
+            break;
+    }
+    write_profile_emmc_cmd12(prof_start, status);
+
+    R16_EMMC_INT_FG = 0xffff;
+    *reqnum = (uint16_t)R32_EMMC_STATUS;
+    write_profile_emmc_done(*reqnum);
+
+    return status;
 }
-
-static uint32_t write_prof_us(uint64_t cycles)
-{
-    uint64_t cycles_per_us = bsp_get_nbtick_1us();
-    if (cycles_per_us == 0)
-        return 0;
-    return (uint32_t)(cycles / cycles_per_us);
-}
-
-static void write_prof_reset(uint16_t sectors)
-{
-    memset(&write_prof, 0, sizeof(write_prof));
-    EMMCWriteProfileReset();
-    write_prof.sectors = sectors;
-    write_prof.total_start = write_prof_now();
-}
-
-static void write_prof_log(void)
-{
-    uint32_t total_cycles = write_prof_elapsed(write_prof.total_start);
-
-    cprintf("Wprof u2 sec=%u ch=%lu total=%luus usb=%luus snoop=%luus crypt=%luus sd=%luus dat0=%luus\r\n",
-            write_prof.sectors,
-            (unsigned long)write_prof.chunks,
-            (unsigned long)write_prof_us(total_cycles),
-            (unsigned long)write_prof_us(write_prof.usb_cycles),
-            (unsigned long)write_prof_us(write_prof.snoop_cycles),
-            (unsigned long)write_prof_us(write_prof.crypt_cycles),
-            (unsigned long)write_prof_us(write_prof.sd_cycles),
-            (unsigned long)write_prof_us(write_prof.dat0_cycles));
-
-    cprintf("Eprof calls=%lu req=%lu done=%lu bkgap=%lu acmd23=%lu/%luus cmd23=%lu/%luus cmd24=%lu/%luus cmd25=%lu/%luus data=%lu/%luus cmd12=%lu/%luus err=%lu/%lu/%lu/%lu/%lu/%lu/%lu\r\n",
-            (unsigned long)emmc_write_prof.calls,
-            (unsigned long)emmc_write_prof.req_sectors,
-            (unsigned long)emmc_write_prof.done_sectors,
-            (unsigned long)emmc_write_prof.bkgaps,
-            (unsigned long)write_prof_us(emmc_write_prof.acmd23_cycles),
-            (unsigned long)write_prof_us(emmc_write_prof.acmd23_max_cycles),
-            (unsigned long)write_prof_us(emmc_write_prof.cmd23_cycles),
-            (unsigned long)write_prof_us(emmc_write_prof.cmd23_max_cycles),
-            (unsigned long)write_prof_us(emmc_write_prof.cmd24_cycles),
-            (unsigned long)write_prof_us(emmc_write_prof.cmd24_max_cycles),
-            (unsigned long)write_prof_us(emmc_write_prof.cmd25_cycles),
-            (unsigned long)write_prof_us(emmc_write_prof.cmd25_max_cycles),
-            (unsigned long)write_prof_us(emmc_write_prof.data_cycles),
-            (unsigned long)write_prof_us(emmc_write_prof.data_max_cycles),
-            (unsigned long)write_prof_us(emmc_write_prof.cmd12_cycles),
-            (unsigned long)write_prof_us(emmc_write_prof.cmd12_max_cycles),
-            (unsigned long)emmc_write_prof.invalid_addr_errors,
-            (unsigned long)emmc_write_prof.acmd23_errors,
-            (unsigned long)emmc_write_prof.cmd23_errors,
-            (unsigned long)emmc_write_prof.cmd24_errors,
-            (unsigned long)emmc_write_prof.cmd25_errors,
-            (unsigned long)emmc_write_prof.data_errors,
-            (unsigned long)emmc_write_prof.cmd12_errors);
-
-    cprintf("Ewait bkgap=%lu/%luus trdone=%lu/%luus\r\n",
-            (unsigned long)write_prof_us(emmc_write_prof.bkgap_wait_cycles),
-            (unsigned long)write_prof_us(emmc_write_prof.bkgap_wait_max_cycles),
-            (unsigned long)write_prof_us(emmc_write_prof.trandone_wait_cycles),
-            (unsigned long)write_prof_us(emmc_write_prof.trandone_wait_max_cycles));
-}
-#endif
 
 static uint8_t write_chunk_to_sd(uint8_t *buf, uint32_t write_lba, uint16_t chunk_sectors)
 {
     uint16_t reqnum = chunk_sectors;
     uint8_t status;
+    uint32_t prof_start = write_profile_now();
 
-    if (ovrd_state == STATE_UNLOCKED) {
-#ifdef DEBUG
-        uint32_t prof_start = write_prof_now();
-#endif
-        ovrd_crypt_buf(buf, write_lba, chunk_sectors);
-#ifdef DEBUG
-        write_prof.crypt_cycles += write_prof_elapsed(prof_start);
-#endif
-    }
-
-#ifdef DEBUG
-    uint32_t prof_start = write_prof_now();
-#endif
     PFIC_DisableIRQ(EMMC_IRQn);
     R16_EMMC_INT_FG = 0xffff;
     TF_EMMCParam.EMMCOpErr = 0;
     TF_EMMCParam.EMMCSecSize = SECTOR_SIZE;
 
-    if (ovrd_state == STATE_UNLOCKED && chunk_sectors == 1 && write_lba >= LOCKED_SECTORS)
-        status = EMMCCardWriteOneSec(&TF_EMMCParam, &reqnum, buf, write_lba);
+    if (ovrd_state == STATE_UNLOCKED)
+        status = write_chunk_to_sd_ecdc(buf, write_lba, &reqnum);
     else
         status = EMMCCardWriteMulSec(&TF_EMMCParam, &reqnum, buf, write_lba);
 
     R16_EMMC_INT_FG = 0xffff;
     TF_EMMCParam.EMMCOpErr = 0;
     PFIC_EnableIRQ(EMMC_IRQn);
-#ifdef DEBUG
-    write_prof.sd_cycles += write_prof_elapsed(prof_start);
-#endif
+    write_profile_add_sd(prof_start);
 
-#ifdef DEBUG_USB
-    cprintf("W s=%u req=%u act=%u\r\n", status, chunk_sectors, reqnum);
-#endif
+    diag_log_write_result(status, chunk_sectors, reqnum);
     return status;
 }
 
@@ -146,14 +136,10 @@ static uint8_t *alternate_write_buf(uint8_t *buf)
 static void receive_chunk_usb2(uint8_t *buf, uint16_t chunk_sectors, uint32_t lba, uint8_t *first)
 {
     uint16_t sectors_received = 0;
-#ifdef DEBUG
-    uint32_t prof_start = write_prof_now();
-#endif
+    uint32_t prof_start = write_profile_now();
 
     R8_USB_INT_FG = RB_USB_IF_TRANSFER;
-#ifdef DEBUG_USB
-    cprintf("W lba=%lu n=%u\r\n", lba, chunk_sectors);
-#endif
+    diag_log_write_chunk(lba, chunk_sectors);
 
     if (*first) {
         memcpy(buf, endp1Rbuff, SECTOR_SIZE);
@@ -176,38 +162,27 @@ static void receive_chunk_usb2(uint8_t *buf, uint16_t chunk_sectors, uint32_t lb
         sectors_received++;
     }
 
-#ifdef DEBUG
-    write_prof.usb_cycles += write_prof_elapsed(prof_start);
-#endif
-#ifdef DEBUG_USB
+    write_profile_add_usb(prof_start);
     diag_write_checksums_usb2(buf, chunk_sectors);
-#endif
 }
 
 static uint8_t write_received_chunk(uint8_t *buf, uint32_t lba, uint16_t chunk_sectors)
 {
     uint32_t physical_lba = compute_physical_lba(lba);
+    uint32_t prof_start = write_profile_now();
 
-#ifdef DEBUG
-    uint32_t prof_start = write_prof_now();
-    write_prof.chunks++;
-#endif
+    write_profile_count_chunk();
     ovrd_snoop_write(buf, (uint32_t)chunk_sectors * SECTOR_SIZE);
-#ifdef DEBUG
-    write_prof.snoop_cycles += write_prof_elapsed(prof_start);
-#endif
+    write_profile_add_snoop(prof_start);
     return write_chunk_to_sd(buf, physical_lba, chunk_sectors);
 }
 
 static void wait_dat0_ready(void)
 {
-#ifdef DEBUG
-    uint32_t prof_start = write_prof_now();
-#endif
+    uint32_t prof_start = write_profile_now();
+
     while (!EMMCDat0Sta);
-#ifdef DEBUG
-    write_prof.dat0_cycles += write_prof_elapsed(prof_start);
-#endif
+    write_profile_add_dat0(prof_start);
 }
 
 static void write_stream_usb2(uint16_t total_sectors, uint32_t lba)
@@ -265,15 +240,11 @@ void msc_write_sectors(void)
 
     g_bot.transfer_bytes_left = 0;
 
-#ifdef DEBUG
-    write_prof_reset(total_sectors);
-#endif
+    write_profile_reset(total_sectors);
 
     write_stream_usb2(total_sectors, lba);
 
-#ifdef DEBUG
-    write_prof_log();
-#endif
+    write_profile_log();
 
     if (g_bot.transfer_bytes_left == 0) {
         g_bot.transfer_flags &= ~BOT_FLAG_DATA_OUT;

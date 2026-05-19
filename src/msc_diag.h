@@ -50,6 +50,7 @@ static inline void diag_check_usb_sector(read_diag_t *d, uint8_t *buf,
 static inline void diag_log_read_summary(read_diag_t *d, uint16_t preqnum,
                                       uint16_t xfer_count, uint16_t usbtran)
 {
+#ifdef DEBUG_USB
     if (d->sd_err || d->usb_err)
         cprintf("R ERR sd=%u usb=%u sdE=%08lx/%08lx usbE=%08lx/%08lx\r\n",
                 d->sd_err, d->usb_err,
@@ -57,6 +58,12 @@ static inline void diag_log_read_summary(read_diag_t *d, uint16_t preqnum,
                 d->usb_first_exp, d->usb_first_got);
     else
         cprintf("R OK n=%u xfer=%u usbtran=%u\r\n", preqnum, xfer_count, usbtran);
+#else
+    (void)d;
+    (void)preqnum;
+    (void)xfer_count;
+    (void)usbtran;
+#endif
 }
 
 static inline uint32_t diag_sector_checksum(uint8_t *sector_buf)
@@ -70,6 +77,7 @@ static inline uint32_t diag_sector_checksum(uint8_t *sector_buf)
 
 static inline void diag_write_checksums_usb2(uint8_t *buf, uint16_t chunk_sectors)
 {
+#ifdef DEBUG_USB
     uint32_t ckfirst = diag_sector_checksum(buf);
     uint32_t cksecond = 0;
     if (chunk_sectors > 1)
@@ -77,13 +85,43 @@ static inline void diag_write_checksums_usb2(uint8_t *buf, uint16_t chunk_sector
     uint32_t cklast = diag_sector_checksum(buf + (chunk_sectors - 1) * SECTOR_SIZE);
     cprintf("W ck0=%08lx ck1=%08lx ck%u=%08lx\r\n",
             ckfirst, cksecond, chunk_sectors - 1, cklast);
+#else
+    (void)buf;
+    (void)chunk_sectors;
+#endif
 }
 
 static inline void diag_write_checksums_usb3(uint8_t *buf, uint16_t chunk_sectors)
 {
+#ifdef DEBUG_USB
     uint32_t ckfirst = diag_sector_checksum(buf);
     uint32_t cklast = diag_sector_checksum(buf + (chunk_sectors - 1) * SECTOR_SIZE);
     cprintf("W ck0=%08lx ck%u=%08lx\r\n", ckfirst, chunk_sectors - 1, cklast);
+#else
+    (void)buf;
+    (void)chunk_sectors;
+#endif
+}
+
+static inline void diag_log_write_chunk(uint32_t lba, uint16_t sectors)
+{
+#ifdef DEBUG_USB
+    cprintf("W lba=%lu n=%u\r\n", lba, sectors);
+#else
+    (void)lba;
+    (void)sectors;
+#endif
+}
+
+static inline void diag_log_write_result(uint8_t status, uint16_t requested, uint16_t actual)
+{
+#ifdef DEBUG_USB
+    cprintf("W s=%u req=%u act=%u\r\n", status, requested, actual);
+#else
+    (void)status;
+    (void)requested;
+    (void)actual;
+#endif
 }
 
 #endif /* MSC_DIAG_H_ */

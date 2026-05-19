@@ -163,7 +163,7 @@ void ovrd_poll(void)
 	ovrd_do_unlock();
 }
 
-static void ecdc_set_sector_nonce(uint32_t sd_lba)
+void ovrd_ecdc_set_sector_nonce(uint32_t sd_lba)
 {
 	uint32_t ctr[4];
 	ctr[0] = 0;
@@ -171,6 +171,12 @@ static void ecdc_set_sector_nonce(uint32_t sd_lba)
 	ctr[2] = 0;
 	ctr[3] = 0;
 	ECDC_SetCount((puint32_t)ctr);
+}
+
+void ovrd_ecdc_disable_data_path(void)
+{
+	R16_ECEC_CTRL &= ~(RB_ECDC_WRSRAM_EN | RB_ECDC_WRPERI_EN |
+	                    RB_ECDC_RDPERI_EN | RB_ECDC_MODE_SEL);
 }
 
 /* ECDC SRAM_LEN is in 128-bit (16-byte) units [CH569DS1 Ch15] */
@@ -181,13 +187,12 @@ void ovrd_crypt_buf(uint8_t *buf, uint32_t sd_lba, uint16_t num_sectors)
 
 	uint16_t i;
 	for (i = 0; i < num_sectors; i++) {
-		ecdc_set_sector_nonce(sd_lba + i);
+		ovrd_ecdc_set_sector_nonce(sd_lba + i);
 		ECDC_Excute(SELFDMA_ENCRY, MODE_LITTLE_ENDIAN);
 		ECDC_SelfDMA((uint32_t)(buf + i * SECTOR_SIZE), SECTOR_SIZE / 16);
 	}
 	/* Disable ECDC so subsequent eMMC DMA isn't double-encrypted */
-	R16_ECEC_CTRL &= ~(RB_ECDC_WRSRAM_EN | RB_ECDC_WRPERI_EN |
-	                    RB_ECDC_RDPERI_EN | RB_ECDC_MODE_SEL);
+	ovrd_ecdc_disable_data_path();
 
 #ifdef DEBUG_USB
 	if (clog < 5) {
