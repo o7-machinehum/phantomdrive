@@ -26,9 +26,8 @@
  *
  * Clock configuration:
  *   Base clock = 480MHz (from PLL)
- *   LOWEMMCCLK divider = 0x1F (31) → 480/31 ≈ 15MHz
- *   Used during init (slow) and currently for data transfers too
- *   (conservative speed for long-wire setups)
+ *   LOWEMMCCLK divider = 0x1F (31) for card initialization
+ *   SD_HIGH_SPEED_CLK_DIV = 4 for 48MHz after CMD6 high-speed selection
  *   [ref/SD_Physical_Layer_Spec_v6.00.pdf: Section 6 - Clock Control]
  *
  * SPDX-License-Identifier: Apache-2.0
@@ -47,6 +46,7 @@ static __attribute__((aligned(8))) uint8_t scr_buf[512] __attribute__((section("
 #define SD_CMD6_SET_HIGH_SPEED      0x80FFFFF1u
 #define SD_SWITCH_G1_HIGH_SPEED     0x02
 #define SD_SWITCH_G1_RESULT_MASK    0x0F
+#define SD_HIGH_SPEED_CLK_DIV       4  /* 480MHz / (2 * (4 + 1)) = 48MHz */
 
 /*******************************************************************************
  * SDReadOCR - Read SD card Operating Conditions Register via ACMD41
@@ -400,18 +400,14 @@ static void SD_EnableHighSpeed(PSD_PARAMETER pEMMCPara)
 /*******************************************************************************
  * SD_IO_init - Configure eMMC controller GPIO and registers for SD card
  *
- * The CH569's eMMC controller needs specific GPIO and register setup.
- * Multiple IO modes are tried (different phase/edge/drive combinations)
- * because signal integrity varies with PCB layout and wire length.
- *
- * IO modes 0-7 cycle through combinations of:
- *   - NEGSMP: Sample on negative clock edge (modes 2,3,4,5)
- *   - PHASEINV: Invert clock phase (modes 0,1,2,3)
- *   - Drive strength: High drive for modes 1-5
+ * Fixed board setup:
+ *   - high drive strength on CMD/CLK/DAT lines
+ *   - positive-edge CMD/DAT sampling
+ *   - inverted SD clock output phase
  *
  * [CH569DS1.PDF: eMMC Controller Registers, GPIO Configuration]
  ******************************************************************************/
-static void SD_IO_init(uint8_t mode)
+static void SD_IO_init(void)
 {
 	/* GPIO: Enable pull-ups on CMD and DAT lines for proper idle state
 	 * SD spec requires pull-ups on CMD, DAT0-DAT3 */
@@ -420,38 +416,23 @@ static void SD_IO_init(uint8_t mode)
 	R32_PA_PU  |= (7<<0);        /* Additional data lines (PA0-PA2) */
 	R32_PB_DIR |= bSDCK;         /* CLK line as output */
 
-	/* High drive strength for modes 1-5 (helps with long wires) */
-	if(mode >= 1 && mode <= 5)
-	{
-		R32_PA_DRV |= (7<<0);
-		R32_PB_DRV |= (0x1f<<17);
-		R32_PB_DRV |= bSDCMD;
-		R32_PB_DRV |= bSDCK;
-	}
+	R32_PA_DRV |= (7<<0);
+	R32_PB_DRV |= (0x1f<<17);
+	R32_PB_DRV |= bSDCMD;
+	R32_PB_DRV |= bSDCK;
 
 	/* Reset eMMC controller (clears all internal state)
 	 * [CH569DS1.PDF: R8_EMMC_CONTROL - RB_EMMC_ALL_CLR, RB_EMMC_RST_LGC] */
 	R8_EMMC_CONTROL = RB_EMMC_ALL_CLR | RB_EMMC_RST_LGC;
 
-	/* Enable DMA engine. NEGSMP (negative-edge sampling) helps with
-	 * signal integrity on some configurations. */
-	if(mode == 0 || mode == 1 || mode == 6 || mode == 7)
-		R8_EMMC_CONTROL = RB_EMMC_DMAEN;
-	else
-		R8_EMMC_CONTROL = RB_EMMC_DMAEN | RB_EMMC_NEGSMP;
+	R8_EMMC_CONTROL = RB_EMMC_DMAEN;
 
 	/* Start in 1-bit mode (DAT0 only) per SD spec init requirements
 	 * [ref/SD_Physical_Layer_Spec_v6.00.pdf: Section 4.2 - 1-bit init] */
 	R8_EMMC_CONTROL = (R8_EMMC_CONTROL & ~RB_EMMC_LW_MASK) | bLW_OP_DAT0;
 
-	/* Set slow clock for initialization (LOWEMMCCLK = divider 31)
-	 * 480MHz / 31 ≈ 15MHz. SD spec requires ≤400kHz for CMD0-ACMD41,
-	 * but many cards tolerate higher speeds during init.
-	 * PHASEINV inverts the clock phase for some modes. */
-	if(mode < 4)
-		R16_EMMC_CLK_DIV = RB_EMMC_CLKOE | RB_EMMC_PHASEINV | LOWEMMCCLK;
-	else
-		R16_EMMC_CLK_DIV = RB_EMMC_CLKOE | LOWEMMCCLK;
+	/* Start at the init clock, with the board's fixed clock phase. */
+	R16_EMMC_CLK_DIV = RB_EMMC_CLKOE | RB_EMMC_PHASEINV | LOWEMMCCLK;
 
 	/* Enable error interrupts only (NOT data/command complete).
 	 * BKGAP and TRANDONE are polled, not interrupt-driven.
@@ -471,7 +452,7 @@ static void SD_IO_init(uint8_t mode)
 }
 
 /*******************************************************************************
- * SD_do_init - Execute full SD card init sequence for a given IO mode
+ * SD_do_init - Execute full SD card init sequence
  *
  * Init sequence per SD Physical Layer Spec Section 4.2:
  *
@@ -488,7 +469,7 @@ static void SD_IO_init(uint8_t mode)
  * After this sequence, the card is in Transfer State and ready for
  * CMD17/18 (read) and CMD24/25 (write) data transfers.
  ******************************************************************************/
-static uint8_t SD_do_init(PSD_PARAMETER pEMMCPara, uint8_t mode)
+static uint8_t SD_do_init(PSD_PARAMETER pEMMCPara)
 {
 	uint8_t sta;
 	uint8_t i;
@@ -561,43 +542,28 @@ static uint8_t SD_do_init(PSD_PARAMETER pEMMCPara, uint8_t mode)
 	 * clock is raised only after this switch transaction completes. */
 	SD_EnableHighSpeed(pEMMCPara);
 
-	/* Switch to operational clock speed.
-	 * Keep initialization at LOWEMMCCLK, then use the BSP high-speed setting
-	 * once the card is selected and running in 4-bit mode.
+	/* Switch to 48MHz SD high-speed after CMD6 and 4-bit bus setup.
 	 * [CH569DS1.PDF: R16_EMMC_CLK_DIV register] */
-	if(mode < 4)
-		R16_EMMC_CLK_DIV = RB_EMMC_CLKMode | RB_EMMC_PHASEINV | RB_EMMC_CLKOE | HIGHEMMCCLK;
-	else
-		R16_EMMC_CLK_DIV = RB_EMMC_CLKMode | RB_EMMC_CLKOE | HIGHEMMCCLK;
+	R16_EMMC_CLK_DIV = RB_EMMC_CLKMode | RB_EMMC_PHASEINV | RB_EMMC_CLKOE | SD_HIGH_SPEED_CLK_DIV;
 
 	return OP_SUCCESS;
 }
 
 /*******************************************************************************
- * SDCardInit - Initialize SD card, trying all 8 IO modes
+ * SDCardInit - Initialize SD card with the fixed board timing
  *
- * Different SD cards and PCB layouts require different clock phase/edge/drive
- * configurations. This function tries all 8 combinations until one works.
- *
- * Returns OP_SUCCESS if any mode successfully initializes the card.
- * The card remains configured with the first working mode.
+ * Returns OP_SUCCESS if initialization completes.
  ******************************************************************************/
 uint8_t SDCardInit(PSD_PARAMETER pEMMCPara)
 {
-	uint8_t i, sta;
+	uint8_t sta;
 
-	for(i = 0; i < 8; i++)
-	{
-		log_printf("SD: trying IO mode %d\r\n", i);
-		SD_IO_init(i);
-		pEMMCPara->EMMCOpErr = 0;
-		sta = SD_do_init(pEMMCPara, i);
-		if(sta == OP_SUCCESS)
-		{
-			log_printf("SD: mode %d OK\r\n", i);
-			return OP_SUCCESS;
-		}
-	}
+	log_printf("SD: fixed high-speed config\r\n");
+	SD_IO_init();
+	pEMMCPara->EMMCOpErr = 0;
+	sta = SD_do_init(pEMMCPara);
+	if(sta == OP_SUCCESS)
+		log_printf("SD: init OK\r\n");
 
-	return OP_FAILED;
+	return sta;
 }

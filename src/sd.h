@@ -18,8 +18,7 @@
 #include "CH56x_common.h"
 #include "CH56x_emmc.h"
 
-/* Full SD card init: tries 8 IO modes (clock phase/edge/drive combinations),
- * returns OP_SUCCESS if any mode initializes the card successfully. */
+/* Full SD card init using the fixed board timing configuration. */
 uint8_t SDCardInit(PSD_PARAMETER pEMMCPara);
 
 /* Individual init steps (called internally by SDCardInit): */
