@@ -133,34 +133,6 @@ extern __attribute__((aligned(16))) uint8_t UDisk_Out_Buf[UDISK_BUF_SIZE]
 
 void EMMC_IRQHandler(void) __attribute__((interrupt));
 
-/* Backward-compat aliases for BSP ISRs and internal modules */
-#define UDISKSIZE                   UDISK_BUF_SIZE
-#define DEF_CFG_DISK_SEC_SIZE       SECTOR_SIZE
-#define DEF_UDISK_SECTOR_SIZE       SECTOR_SIZE
-#define DEF_UDISK_PACK_512          SECTOR_SIZE
-#define DEF_UDISK_PACK_64           64
-
-#define DEF_UDISK_EN_FLAG           BOT_FLAG_DEVICE_READY
-#define DEF_UDISK_BLUCK_UP_FLAG     BOT_FLAG_DATA_IN
-#define DEF_UDISK_BLUCK_DOWN_FLAG   BOT_FLAG_DATA_OUT
-#define DEF_UDISK_CSW_UP_FLAG       BOT_FLAG_CSW_PENDING
-
-#define Udisk_Status                g_bot.device_ready
-#define Udisk_Transfer_Status       g_bot.transfer_flags
-#define Udisk_Capability            g_bot.capacity
-#define Udisk_CBW_Tag_Save          g_bot.cbw_tag
-#define Udisk_Sense_Key             g_bot.sense_key
-#define Udisk_Sense_ASC             g_bot.sense_asc
-#define Udisk_CSW_Status            g_bot.csw_status
-#define UDISK_Transfer_DataLen      g_bot.transfer_bytes_left
-#define UDISK_Cur_Sec_Lba           g_bot.current_lba
-#define UDISK_Sec_Pack_Count        g_bot.sectors_done
-#define UDISK_Pack_Size             g_bot.pack_size
-#define UDISK_InPackflag            g_bot.read_pending
-#define UDISK_OutPackflag           g_bot.write_pending
-#define mBOC                        g_cbw_csw
-#define pEndp2_Buf                  g_response_ptr
-
 #ifdef __cplusplus
 }
 #endif

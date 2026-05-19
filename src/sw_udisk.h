@@ -1,7 +1,7 @@
-/* sw_udisk.h - BSP compatibility shim
+/* sw_udisk.h - USB ISR bridge to the MSC BOT handlers
  *
- * The BSP USB ISR files (CH56x_usb20_devbulk.c, CH56x_usb30_devbulk.c)
- * include this header. It re-exports the new module headers they need.
+ * The WCH USB ISR files include this project header for BOT state and
+ * endpoint callbacks.
  *
  * SPDX-License-Identifier: Apache-2.0
  */

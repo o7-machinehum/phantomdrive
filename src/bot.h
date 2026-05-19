@@ -22,9 +22,4 @@ void bot_send_response_data(void);
 void bot_send_csw(void);
 void bot_poll(void);
 
-/* Backward-compatibility aliases for BSP USB ISR files */
-#define UDISK_In_EP_Deal        bot_handle_bulk_in
-#define UDISK_Out_EP_Deal       bot_handle_bulk_out
-#define UDISK_Up_CSW            bot_send_csw
-
 #endif /* BOT_H_ */

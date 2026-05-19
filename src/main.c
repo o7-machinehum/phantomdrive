@@ -1,12 +1,10 @@
-/* main.c - USB MSC device: Host <-> CH569 USB2/USB3 <-> SD card
+/* main.c - USB MSC device: Host <-> CH569 USB2 <-> SD card
  * SPDX-License-Identifier: Apache-2.0
  */
 #include "CH56x_common.h"
 #include "CH56x_debug_log.h"
 
-#include "CH56x_usb30_devbulk.h"
 #include "CH56x_usb20_devbulk.h"
-#include "CH56x_usb30_devbulk_LIB.h"
 #include "CH56x_usb_devbulk_desc_cmd.h"
 
 #include "bot.h"
@@ -19,12 +17,6 @@
 #if(defined DEBUG)
 #define UART1_BAUD (115200)
 #endif
-
-#define BLINK_FAST (50)
-#define BLINK_USB3 (250)
-#define BLINK_USB2 (500)
-
-int blink_ms = BLINK_USB2;
 
 debug_log_buf_t log_buf;
 
@@ -55,17 +47,10 @@ int main()
 	log_printf("Phantomdrive FW v0.1 (CPr Freq=%d MHz)\r\n", (FREQ_SYS/1000000));
 
 	R32_USB_CONTROL = 0;
-	PFIC_EnableIRQ(USBSS_IRQn);
-	PFIC_EnableIRQ(LINK_IRQn);
-
-	/* Timer0: USB3 link training timeout, falls back to USB2 */
-	PFIC_EnableIRQ(TMR0_IRQn);
-	R8_TMR0_INTER_EN = RB_TMR_IE_CYC_END;
-	TMR0_TimerInit(67000000);
-
 	usb_descriptor_set_string_serial_number(&unique_id);
 	usb_descriptor_set_usb_vid_pid(&vid_pid);
-	USB30D_init(ENABLE);
+	PFIC_EnableIRQ(USBHS_IRQn);
+	USB20_Device_Init(ENABLE);
 
 	log_printf("Initializing SD card...\r\n");
 	uint8_t sta = SDCardInit(&TF_EMMCParam);

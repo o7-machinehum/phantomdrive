@@ -3,6 +3,7 @@
 #include "bot_state.h"
 #include "CH56x_ecdc.h"
 #include "CH56x_debug_log.h"
+#include "CH56x_usb20_devbulk.h"
 #include <string.h>
 
 volatile uint8_t ovrd_state = STATE_LOCKED;
@@ -88,7 +89,9 @@ static void ovrd_do_unlock(void)
 	g_bot.transfer_flags = 0;
 	g_bot.read_pending = 0;
 	g_bot.write_pending = 0;
-	USB3_force();
+	USB20_Device_Init(DISABLE);
+	PFIC_EnableIRQ(USBHS_IRQn);
+	USB20_Device_Init(ENABLE);
 
 	log_printf("ovrd: re-enumerated\r\n");
 }

@@ -34,11 +34,19 @@
  * SPDX-License-Identifier: Apache-2.0
  *******************************************************************************/
 #include "sd.h"
+#include "CH56x_debug_log.h"
+#include <string.h>
 
 /* Scratch buffer for SCR register read (8 bytes needed, 512 allocated for
  * DMA alignment requirements). Must be in RAMX for DMA access.
  * [CH569DS1.PDF: DMA buffers must be in RAMX (.DMADATA section)] */
 static __attribute__((aligned(8))) uint8_t scr_buf[512] __attribute__((section(".DMADATA")));
+
+#define SD_SWITCH_STATUS_LEN        64
+#define SD_CMD6_CHECK_HIGH_SPEED    0x00FFFFF1u
+#define SD_CMD6_SET_HIGH_SPEED      0x80FFFFF1u
+#define SD_SWITCH_G1_HIGH_SPEED     0x02
+#define SD_SWITCH_G1_RESULT_MASK    0x0F
 
 /*******************************************************************************
  * SDReadOCR - Read SD card Operating Conditions Register via ACMD41
@@ -319,6 +327,76 @@ uint8_t SD_ReadSCR(PSD_PARAMETER pEMMCPara, uint8_t *pRdatbuf)
 	return sta;
 }
 
+static uint8_t SD_SwitchFunction(PSD_PARAMETER pEMMCPara, uint32_t arg, uint8_t *pRdatbuf)
+{
+	uint16_t t;
+	uint8_t sta;
+
+	pEMMCPara->EMMCOpErr = 0;
+	R16_EMMC_INT_FG = 0xffff;
+	R32_EMMC_DMA_BEG1 = (uint32_t)pRdatbuf;
+	R32_EMMC_TRAN_MODE = 0;
+	R32_EMMC_BLOCK_CFG = SD_SWITCH_STATUS_LEN << 16 | 1;
+
+	EMMCSendCmd(arg, RB_EMMC_CKIDX | RB_EMMC_CKCRC | RESP_TYPE_48 | EMMC_CMD6);
+	while(1)
+	{
+		sta = CheckCMDComp(pEMMCPara);
+		if(sta != CMD_NULL) break;
+	}
+	if(sta != CMD_SUCCESS) {
+		R16_EMMC_INT_FG = 0xffff;
+		pEMMCPara->EMMCOpErr = 0;
+		return sta;
+	}
+
+	while(1)
+	{
+		if(R16_EMMC_INT_FG & RB_EMMC_IF_TRANDONE) break;
+		if(pEMMCPara->EMMCOpErr) {
+			R16_EMMC_INT_FG = 0xffff;
+			pEMMCPara->EMMCOpErr = 0;
+			return CMD_FAILED;
+		}
+	}
+
+	t = R16_EMMC_INT_FG;
+	R16_EMMC_INT_FG = t;
+	return CMD_SUCCESS;
+}
+
+static void SD_EnableHighSpeed(PSD_PARAMETER pEMMCPara)
+{
+	uint8_t sta;
+
+	memset(scr_buf, 0, sizeof(scr_buf));
+	sta = SD_SwitchFunction(pEMMCPara, SD_CMD6_CHECK_HIGH_SPEED, scr_buf);
+	if(sta != CMD_SUCCESS) {
+		log_printf("SD: CMD6 check failed (%u), keeping default speed\r\n", sta);
+		return;
+	}
+
+	if((scr_buf[13] & SD_SWITCH_G1_HIGH_SPEED) == 0) {
+		log_printf("SD: high-speed unsupported\r\n");
+		return;
+	}
+
+	memset(scr_buf, 0, sizeof(scr_buf));
+	sta = SD_SwitchFunction(pEMMCPara, SD_CMD6_SET_HIGH_SPEED, scr_buf);
+	if(sta != CMD_SUCCESS) {
+		log_printf("SD: CMD6 switch failed (%u), keeping default speed\r\n", sta);
+		return;
+	}
+
+	if((scr_buf[16] & SD_SWITCH_G1_RESULT_MASK) == 1)
+		log_printf("SD: high-speed mode enabled\r\n");
+	else
+		log_printf("SD: high-speed mode not selected (g1=%u)\r\n",
+		           scr_buf[16] & SD_SWITCH_G1_RESULT_MASK);
+
+	mDelayuS(2);
+}
+
 /*******************************************************************************
  * SD_IO_init - Configure eMMC controller GPIO and registers for SD card
  *
@@ -478,6 +556,10 @@ static uint8_t SD_do_init(PSD_PARAMETER pEMMCPara, uint8_t mode)
 	 * Verifies the card is responding correctly in 4-bit mode */
 	sta = SD_ReadSCR(pEMMCPara, scr_buf);
 	if(sta != CMD_SUCCESS) return OP_FAILED;
+
+	/* CMD6 selects High-Speed access mode on SD v1.10+ cards. The controller
+	 * clock is raised only after this switch transaction completes. */
+	SD_EnableHighSpeed(pEMMCPara);
 
 	/* Switch to operational clock speed.
 	 * Keep initialization at LOWEMMCCLK, then use the BSP high-speed setting

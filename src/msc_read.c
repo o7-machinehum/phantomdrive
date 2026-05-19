@@ -4,9 +4,7 @@
 #include "msc_read.h"
 #include "emmc_ops.h"
 #include "msc_diag.h"
-#include "CH56x_usb30_devbulk.h"
 #include "CH56x_usb20_devbulk.h"
-#include "CH56x_usb30_devbulk_LIB.h"
 
 extern void bot_send_csw(void);
 
@@ -140,117 +138,24 @@ static void read_stream_usb2(uint32_t actual_lba, uint16_t preqnum)
     R8_UEP0_RX_CTRL = uep0rxsave;
 }
 
-static void read_stream_usb3(uint32_t actual_lba, uint16_t preqnum)
-{
-    uint16_t sdtran = 0, usbtran = 0;
-    uint8_t sdstep = 0, usbstep = 0;
-    uint8_t lock = 0, flag = 1;
-
-    PFIC_DisableIRQ(USBSS_IRQn);
-    emmc_start_multiblock_read(UDisk_In_Buf, actual_lba, preqnum);
-
-    while (1)
-    {
-        if ((sdtran > 1 && usbtran < sdtran - 1) &&
-            ((USBSS->UEP1_TX_CTRL & ((uint32_t)1 << 31)) || flag))
-        {
-            USB30_IN_clearIT(ENDP_1);
-            USBSS->UEP1_TX_DMA = (uint32_t)(uint8_t *)(UDisk_In_Buf + usbstep * SECTOR_SIZE);
-            USB30_IN_set(ENDP_1, ENABLE, ACK, 1, 1024);
-            USB30_send_ERDY(ENDP_1 | IN, 1);
-            usbtran += 2;
-            usbstep += 2;
-            if (usbstep == UDISK_BUF_SIZE / SECTOR_SIZE) usbstep = 0;
-            flag = 0;
-            if (lock) {
-                lock = 0;
-                emmc_release_gap_stop();
-            }
-        }
-
-        if (R16_EMMC_INT_FG & RB_EMMC_IF_BKGAP)
-        {
-            R16_EMMC_INT_FG = RB_EMMC_IF_BKGAP;
-            if (ovrd_state == STATE_UNLOCKED)
-                ovrd_crypt_buf(UDisk_In_Buf + sdstep * SECTOR_SIZE, actual_lba + sdtran, 1);
-            sdtran++;
-            sdstep++;
-            if (sdstep == UDISK_BUF_SIZE / SECTOR_SIZE) sdstep = 0;
-            R32_EMMC_DMA_BEG1 = (uint32_t)(uint8_t *)(UDisk_In_Buf + sdstep * SECTOR_SIZE);
-            if ((sdtran - usbtran) < ((UDISK_BUF_SIZE / SECTOR_SIZE) - 2))
-                emmc_release_gap_stop();
-            else
-                lock = 1;
-        }
-        else if (R16_EMMC_INT_FG & RB_EMMC_IF_TRANDONE)
-        {
-            R16_EMMC_INT_FG = RB_EMMC_IF_TRANDONE | RB_EMMC_IF_CMDDONE;
-            if (ovrd_state == STATE_UNLOCKED)
-                ovrd_crypt_buf(UDisk_In_Buf + sdstep * SECTOR_SIZE, actual_lba + sdtran, 1);
-            sdtran++;
-            sdstep++;
-            break;
-        }
-    }
-
-    /* Drain remaining USB3 sends */
-    while (1)
-    {
-        if ((USBSS->UEP1_TX_CTRL & ((uint32_t)1 << 31)) || flag)
-        {
-            flag = 0;
-            USB30_IN_clearIT(ENDP_1);
-            if ((sdtran - usbtran) > 1)
-            {
-                USBSS->UEP1_TX_DMA = (uint32_t)(uint8_t *)(UDisk_In_Buf + usbstep * SECTOR_SIZE);
-                USB30_IN_set(ENDP_1, ENABLE, ACK, 1, 1024);
-                USB30_send_ERDY(ENDP_1 | IN, 1);
-                usbtran += 2;
-                usbstep += 2;
-            }
-            else
-            {
-                USBSS->UEP1_TX_DMA = (uint32_t)(uint8_t *)(UDisk_In_Buf + usbstep * SECTOR_SIZE);
-                USB30_IN_set(ENDP_1, ENABLE, ACK, 1, SECTOR_SIZE);
-                USB30_send_ERDY(ENDP_1 | IN, 1);
-                usbtran++;
-                usbstep++;
-            }
-            if (usbstep == UDISK_BUF_SIZE / SECTOR_SIZE) usbstep = 0;
-            if (usbtran == sdtran)
-            {
-                while (!(USBSS->UEP1_TX_CTRL & ((uint32_t)1 << 31)));
-                USB30_IN_clearIT(ENDP_1);
-                break;
-            }
-        }
-    }
-
-    emmc_stop_multiblock_read();
-    PFIC_EnableIRQ(USBSS_IRQn);
-}
-
 void msc_read_sectors(void)
 {
-    uint16_t preqnum = UDISK_Transfer_DataLen / SECTOR_SIZE;
-    UDISK_Transfer_DataLen = 0;
+    uint16_t preqnum = g_bot.transfer_bytes_left / SECTOR_SIZE;
+    g_bot.transfer_bytes_left = 0;
 
-    uint32_t actual_lba = compute_physical_lba(UDISK_Cur_Sec_Lba);
+    uint32_t actual_lba = compute_physical_lba(g_bot.current_lba);
 
 #ifdef DEBUG_USB
     cprintf("R lba=%lu n=%u\r\n", actual_lba, preqnum);
 #endif
 
-    if (g_DeviceUsbType == USB_U20_SPEED)
-        read_stream_usb2(actual_lba, preqnum);
-    else
-        read_stream_usb3(actual_lba, preqnum);
+    read_stream_usb2(actual_lba, preqnum);
 
-    UDISK_Cur_Sec_Lba += preqnum;
+    g_bot.current_lba += preqnum;
 
-    if (UDISK_Transfer_DataLen == 0)
+    if (g_bot.transfer_bytes_left == 0)
         bot_send_csw();
 
-    if (UDISK_Transfer_DataLen == 0x00)
-        Udisk_Transfer_Status &= ~BOT_FLAG_DATA_IN;
+    if (g_bot.transfer_bytes_left == 0x00)
+        g_bot.transfer_flags &= ~BOT_FLAG_DATA_IN;
 }

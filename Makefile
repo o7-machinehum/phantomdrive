@@ -32,7 +32,7 @@ DEBUG =
 
 BUILD_DIR = ./build
 
-PROJECT = $(BUILD_DIR)/HydraUSB3_MSC
+PROJECT = $(BUILD_DIR)/Phantomdrive_MSC
 
 RVMSIS_DIR  = ./wch-ch56x-bsp/rvmsis
 RVMSIS_SRCS = $(wildcard $(RVMSIS_DIR)/*.c)
@@ -47,7 +47,9 @@ BOARD_SRCS  = ./wch-ch56x-bsp/board/hydrausb3_v1.c
 OBJS     += $(patsubst $(BOARD_DIR)/%.c,$(BUILD_DIR)/%.o,$(BOARD_SRCS))
 
 USB_DIR   = ./wch-ch56x-bsp/usb/usb_devbulk
-USB_SRCS  = $(wildcard $(USB_DIR)/*.c)
+USB_SRCS  = \
+  $(USB_DIR)/CH56x_usb20_devbulk.c \
+  $(USB_DIR)/CH56x_usb_devbulk_desc_cmd.c
 OBJS        += $(patsubst $(USB_DIR)/%.c,$(BUILD_DIR)/%.o,$(USB_SRCS))
 
 USER_DIR  = ./src
