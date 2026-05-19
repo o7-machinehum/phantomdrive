@@ -12,21 +12,49 @@
 extern void bot_set_sense(uint8_t key, uint8_t asc, uint8_t status);
 extern void bot_send_csw(void);
 
-static void ecdc_prepare_write_sector(uint32_t write_lba)
+#ifdef DEBUG
+static void profile_card_status_after_write(void)
 {
-    ovrd_ecdc_disable_data_path();
-    ovrd_ecdc_set_sector_nonce(write_lba);
-    ECDC_Excute(RAM_TO_PERIPHERAL_ENCRY, MODE_LITTLE_ENDIAN);
-}
+    uint32_t prof_start = write_profile_now();
+    uint8_t status;
 
-static uint8_t write_chunk_to_sd_ecdc(uint8_t *buf, uint32_t write_lba, uint16_t *reqnum)
+    EMMCSendCmd(TF_EMMCParam.EMMC_RCA << 16,
+                RB_EMMC_CKIDX | RB_EMMC_CKCRC | RESP_TYPE_48 | EMMC_CMD13);
+    while (1) {
+        status = CheckCMDComp(&TF_EMMCParam);
+        if (status != CMD_NULL)
+            break;
+    }
+
+    write_profile_emmc_cmd13(prof_start, status, R32_EMMC_RESPONSE3);
+}
+#else
+static inline void profile_card_status_after_write(void) {}
+#endif
+
+#ifdef DEBUG
+static void profile_bkgap_dat0_sample(uint32_t *sample_start, uint32_t *dat0_low_cycles)
+{
+    uint32_t now = write_profile_now();
+
+    if ((R32_EMMC_STATUS & RB_EMMC_DAT0STA) == 0)
+        *dat0_low_cycles += now - *sample_start;
+    *sample_start = now;
+}
+#endif
+
+static uint8_t write_chunk_to_sd_profiled(uint8_t *buf, uint32_t write_lba, uint16_t *reqnum)
 {
     uint32_t cmd_arg_val;
     uint16_t cmd_set_val;
     uint8_t status;
-    uint16_t next_sector = 1;
+    uint16_t sectors_done;
     uint32_t prof_start;
     uint32_t wait_start;
+    uint32_t dat0_low_cycles = 0;
+#ifdef DEBUG
+    uint32_t dat0_sample_start;
+#endif
 
     write_profile_emmc_start(*reqnum);
 
@@ -51,22 +79,30 @@ static uint8_t write_chunk_to_sd_ecdc(uint8_t *buf, uint32_t write_lba, uint16_t
     if (status == CMD_FAILED)
         return OP_FAILED;
 
-    ecdc_prepare_write_sector(write_lba);
+    ovrd_ecdc_disable_data_path();
     R32_EMMC_TRAN_MODE = RB_EMMC_DMA_DIR;
     R32_EMMC_DMA_BEG1 = (uint32_t)buf;
     R32_EMMC_BLOCK_CFG = (TF_EMMCParam.EMMCSecSize << 16) | *reqnum;
 
     prof_start = write_profile_now();
     wait_start = prof_start;
+#ifdef DEBUG
+    dat0_sample_start = prof_start;
+#endif
     while (1) {
+#ifdef DEBUG
+        profile_bkgap_dat0_sample(&dat0_sample_start, &dat0_low_cycles);
+#endif
         if (R16_EMMC_INT_FG & RB_EMMC_IF_BKGAP) {
-            write_profile_emmc_bkgap_wait(wait_start);
-            if (next_sector < *reqnum)
-                ecdc_prepare_write_sector(write_lba + next_sector++);
+            write_profile_emmc_bkgap_wait(wait_start, dat0_low_cycles);
 
             R32_EMMC_RESPONSE3 = 0;
             R16_EMMC_INT_FG = RB_EMMC_IF_BKGAP;
             wait_start = write_profile_now();
+            dat0_low_cycles = 0;
+#ifdef DEBUG
+            dat0_sample_start = wait_start;
+#endif
         } else if (R16_EMMC_INT_FG & RB_EMMC_IF_TRANDONE) {
             write_profile_emmc_trandone_wait(wait_start);
             ovrd_ecdc_disable_data_path();
@@ -95,9 +131,12 @@ static uint8_t write_chunk_to_sd_ecdc(uint8_t *buf, uint32_t write_lba, uint16_t
             break;
     }
     write_profile_emmc_cmd12(prof_start, status);
+    sectors_done = (uint16_t)R32_EMMC_STATUS;
+    if (status == CMD_SUCCESS)
+        profile_card_status_after_write();
 
     R16_EMMC_INT_FG = 0xffff;
-    *reqnum = (uint16_t)R32_EMMC_STATUS;
+    *reqnum = sectors_done;
     write_profile_emmc_done(*reqnum);
 
     return status;
@@ -115,7 +154,7 @@ static uint8_t write_chunk_to_sd(uint8_t *buf, uint32_t write_lba, uint16_t chun
     TF_EMMCParam.EMMCSecSize = SECTOR_SIZE;
 
     if (ovrd_state == STATE_UNLOCKED)
-        status = write_chunk_to_sd_ecdc(buf, write_lba, &reqnum);
+        status = write_chunk_to_sd_profiled(buf, write_lba, &reqnum);
     else
         status = EMMCCardWriteMulSec(&TF_EMMCParam, &reqnum, buf, write_lba);
 
@@ -174,6 +213,11 @@ static uint8_t write_received_chunk(uint8_t *buf, uint32_t lba, uint16_t chunk_s
     write_profile_count_chunk();
     ovrd_snoop_write(buf, (uint32_t)chunk_sectors * SECTOR_SIZE);
     write_profile_add_snoop(prof_start);
+    if (ovrd_state == STATE_UNLOCKED) {
+        prof_start = write_profile_now();
+        ovrd_crypt_buf(buf, physical_lba, chunk_sectors);
+        write_profile_add_crypt(prof_start);
+    }
     return write_chunk_to_sd(buf, physical_lba, chunk_sectors);
 }
 

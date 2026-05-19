@@ -27,7 +27,7 @@
  * Clock configuration:
  *   Base clock = 480MHz (from PLL)
  *   LOWEMMCCLK divider = 0x1F (31) for card initialization
- *   SD_HIGH_SPEED_CLK_DIV = 4 for 48MHz after CMD6 high-speed selection
+ *   SD_HIGH_SPEED_CLK_DIV = 10 for 48MHz after CMD6 high-speed selection
  *   [ref/SD_Physical_Layer_Spec_v6.00.pdf: Section 6 - Clock Control]
  *
  * SPDX-License-Identifier: Apache-2.0
@@ -46,7 +46,7 @@ static __attribute__((aligned(8))) uint8_t scr_buf[512] __attribute__((section("
 #define SD_CMD6_SET_HIGH_SPEED      0x80FFFFF1u
 #define SD_SWITCH_G1_HIGH_SPEED     0x02
 #define SD_SWITCH_G1_RESULT_MASK    0x0F
-#define SD_HIGH_SPEED_CLK_DIV       4  /* 480MHz / (2 * (4 + 1)) = 48MHz */
+#define SD_HIGH_SPEED_CLK_DIV       EMMCCLK_48  /* 480MHz / 10 = 48MHz */
 
 /*******************************************************************************
  * SDReadOCR - Read SD card Operating Conditions Register via ACMD41
@@ -446,9 +446,9 @@ static void SD_IO_init(void)
 					  RB_EMMC_IE_RECRC_WR |   /* Response CRC error */
 					  RB_EMMC_IE_RE_TMOUT;    /* Response timeout */
 
-	/* Data timeout value (2^14 clock cycles)
-	 * [CH569DS1.PDF: R8_EMMC_TIMEOUT] */
-	R8_EMMC_TIMEOUT = 14;
+	/* Maximum documented response/data timeout setting.
+	 * [CH569DS1.PDF: R8_EMMC_TIMEOUT valid range 0..12] */
+	R8_EMMC_TIMEOUT = 12;
 }
 
 /*******************************************************************************
