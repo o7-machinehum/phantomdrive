@@ -4,16 +4,17 @@
 #include "CH56x_ecdc.h"
 #include "CH56x_debug_log.h"
 #include "CH56x_usb20_devbulk.h"
+#include <stdbool.h>
 #include <string.h>
 
 volatile uint8_t phantomdrive_state = STATE_LOCKED;
-volatile uint8_t phantomdrive_unlock_pending = 0;
+static bool phantomdrive_unlock_pending = false;
 
 __attribute__((aligned(16))) uint32_t aes_key[8] __attribute__((section(".DMADATA")));
 
 static uint8_t pending_pw[128];
 static size_t pending_pw_len;
-static uint8_t pw_partial;
+static bool pw_partial;
 
 void phantomdrive_init(void)
 {
@@ -46,8 +47,8 @@ static void phantomdrive_unlock(void)
 	log_printf("phantomdrive: unlocked, %lu sectors\r\n", g_bot.capacity);
 
 	g_bot.transfer_flags = 0;
-	g_bot.read_pending = 0;
-	g_bot.write_pending = 0;
+	g_bot.read_pending = false;
+	g_bot.write_pending = false;
 	USB20_Device_Init(DISABLE);
 	PFIC_EnableIRQ(USBHS_IRQn);
 	USB20_Device_Init(ENABLE);
@@ -70,9 +71,9 @@ void phantomdrive_snoop_write(uint8_t *buf, uint32_t len)
 		memset(buf, 0, end);
 
 		if (end < len || pending_pw_len >= sizeof(pending_pw)) {
-			pw_partial = 0;
+			pw_partial = false;
 			if (pending_pw_len > 0) {
-				phantomdrive_unlock_pending = 1;
+				phantomdrive_unlock_pending = true;
 				log_printf("phantomdrive: password snooped (%u bytes)\r\n",
 				           (unsigned)pending_pw_len);
 			}
@@ -103,12 +104,12 @@ void phantomdrive_snoop_write(uint8_t *buf, uint32_t len)
 
 		if (pw_end < len || pw_len >= sizeof(pending_pw)) {
 			if (pw_len > 0) {
-				phantomdrive_unlock_pending = 1;
+				phantomdrive_unlock_pending = true;
 				log_printf("phantomdrive: password snooped (%u bytes)\r\n",
 				           (unsigned)pw_len);
 			}
 		} else {
-			pw_partial = 1;
+			pw_partial = true;
 		}
 		return;
 	}
@@ -118,7 +119,7 @@ void phantomdrive_poll(void)
 {
 	if (!phantomdrive_unlock_pending)
 		return;
-	phantomdrive_unlock_pending = 0;
+	phantomdrive_unlock_pending = false;
 	phantomdrive_unlock();
 }
 

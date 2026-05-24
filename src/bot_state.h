@@ -8,6 +8,7 @@
 extern "C" {
 #endif
 
+#include <stdbool.h>
 #include "CH56x_common.h"
 #include "CH56x_emmc.h"
 
@@ -36,7 +37,6 @@ extern "C" {
 #define BOT_FLAG_DATA_IN        0x01
 #define BOT_FLAG_DATA_OUT       0x02
 #define BOT_FLAG_CSW_PENDING    0x04
-#define BOT_FLAG_DEVICE_READY   0x01
 
 /* eMMC transfer mode bits [CH569DS1.PDF: R32_EMMC_TRAN_MODE] */
 #define EMMC_TRAN_AUTOGAPSTOP   (1 << 4)
@@ -106,7 +106,7 @@ typedef union _BULK_ONLY_CMD {
 } BULK_ONLY_CMD;
 
 typedef struct {
-    volatile uint8_t  device_ready;
+    volatile bool     device_ready;
     volatile uint8_t  transfer_flags;
     volatile uint32_t capacity;
     volatile uint8_t  cbw_tag[4];
@@ -117,8 +117,8 @@ typedef struct {
     volatile uint32_t current_lba;
     volatile uint16_t sectors_done;
     volatile uint16_t pack_size;
-    volatile uint8_t  read_pending;      /* ISR -> main loop flag */
-    volatile uint8_t  write_pending;     /* ISR -> main loop flag */
+    volatile bool     read_pending;      /* ISR -> main loop flag */
+    volatile bool     write_pending;     /* ISR -> main loop flag */
 } bot_state_t;
 
 extern bot_state_t   g_bot;

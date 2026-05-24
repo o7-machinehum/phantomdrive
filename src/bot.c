@@ -91,7 +91,7 @@ void bot_dispatch_scsi(void)
                 break;
 
             case CMD_U_READ_FORMAT_CAPACITY:
-                if (g_bot.device_ready & BOT_FLAG_DEVICE_READY) {
+                if (g_bot.device_ready) {
                     if (g_bot.transfer_bytes_left > 0x0C)
                         g_bot.transfer_bytes_left = 0x0C;
                     for (i = 0; i < g_bot.transfer_bytes_left; i++)
@@ -109,7 +109,7 @@ void bot_dispatch_scsi(void)
                 break;
 
             case CMD_U_READ_CAPACITY:
-                if (g_bot.device_ready & BOT_FLAG_DEVICE_READY) {
+                if (g_bot.device_ready) {
                     if (g_bot.transfer_bytes_left > 0x08)
                         g_bot.transfer_bytes_left = 0x08;
                     for (i = 0; i < g_bot.transfer_bytes_left; i++)
@@ -127,7 +127,7 @@ void bot_dispatch_scsi(void)
                 break;
 
             case CMD_U_READ10:
-                if (g_bot.device_ready & BOT_FLAG_DEVICE_READY)
+                if (g_bot.device_ready)
                     scsi_parse_rw10_cdb();
                 else {
                     bot_set_sense(SENSE_KEY_NOT_READY, SENSE_ASC_MEDIUM_NOT_PRESENT, CSW_STATUS_FAILED);
@@ -137,7 +137,7 @@ void bot_dispatch_scsi(void)
 
             case CMD_U_WR_VERIFY10:
             case CMD_U_WRITE10:
-                if (g_bot.device_ready & BOT_FLAG_DEVICE_READY)
+                if (g_bot.device_ready)
                     scsi_parse_rw10_cdb();
                 else {
                     bot_set_sense(SENSE_KEY_NOT_READY, SENSE_ASC_MEDIUM_NOT_PRESENT, CSW_STATUS_FAILED);
@@ -146,7 +146,7 @@ void bot_dispatch_scsi(void)
                 break;
 
             case CMD_U_MODE_SENSE:
-                if (g_bot.device_ready & BOT_FLAG_DEVICE_READY) {
+                if (g_bot.device_ready) {
                     if (g_bot.transfer_bytes_left > 0x0C)
                         g_bot.transfer_bytes_left = 0x0C;
                     for (i = 0; i < g_bot.transfer_bytes_left; i++)
@@ -203,7 +203,7 @@ void bot_dispatch_scsi(void)
                 break;
 
             case CMD_U_TEST_READY:
-                if (g_bot.device_ready & BOT_FLAG_DEVICE_READY)
+                if (g_bot.device_ready)
                     bot_set_sense(SENSE_KEY_NO_ERROR, SENSE_ASC_NO_ERROR, CSW_STATUS_PASSED);
                 else {
                     bot_set_sense(SENSE_KEY_NOT_READY, SENSE_ASC_MEDIUM_NOT_PRESENT, CSW_STATUS_FAILED);
@@ -242,7 +242,7 @@ void bot_handle_bulk_in(void)
 {
     if (g_bot.transfer_flags & BOT_FLAG_DATA_IN) {
         if (g_cbw_csw.mCBW.mCBW_CB_Buf[0] == CMD_U_READ10)
-            g_bot.read_pending = 1;
+            g_bot.read_pending = true;
         else
             bot_send_response_data();
     } else if (g_bot.transfer_flags & BOT_FLAG_CSW_PENDING) {
@@ -255,7 +255,7 @@ void bot_handle_bulk_out(uint8_t *pbuf, uint16_t packlen)
     uint32_t i;
 
     if (g_bot.transfer_flags & BOT_FLAG_DATA_OUT) {
-        g_bot.write_pending = 1;
+        g_bot.write_pending = true;
     } else {
         if (packlen == CBW_SIZE) {
             for (i = 0; i < packlen; i++)
@@ -266,7 +266,7 @@ void bot_handle_bulk_out(uint8_t *pbuf, uint16_t packlen)
             if ((g_bot.transfer_flags & BOT_FLAG_DATA_OUT) == 0x00) {
                 if (g_bot.transfer_flags & BOT_FLAG_DATA_IN) {
                     if (g_cbw_csw.mCBW.mCBW_CB_Buf[0] == CMD_U_READ10)
-                        g_bot.read_pending = 1;
+                        g_bot.read_pending = true;
                     else
                         bot_send_response_data();
                 } else if (g_bot.csw_status == CSW_STATUS_PASSED) {
@@ -325,15 +325,15 @@ void bot_send_csw(void)
 
 void bot_poll(void)
 {
-    if (g_bot.read_pending == 1) {
+    if (g_bot.read_pending) {
         // Host wants to read sectors from SD
-        g_bot.read_pending = 0;
+        g_bot.read_pending = false;
         msc_read_sectors();
     }
 
-    if (g_bot.write_pending == 1) {
+    if (g_bot.write_pending) {
         // Host wants to write sectors to SD
-        g_bot.write_pending = 0;
+        g_bot.write_pending = false;
         msc_write_sectors();
 
         R8_UEP1_RX_CTRL = (R8_UEP1_RX_CTRL & ~RB_UEP_RRES_MASK) | UEP_R_RES_ACK;

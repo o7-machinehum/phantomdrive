@@ -207,7 +207,7 @@ void write_profile_emmc_trandone_wait(uint32_t start)
     emmc_write_prof.trandone_int_fg = R16_EMMC_INT_FG;
 }
 
-void write_profile_emmc_data(uint32_t start, uint8_t failed)
+void write_profile_emmc_data(uint32_t start, bool failed)
 {
     write_profile_add_cycles(&emmc_write_prof.data_cycles,
                              &emmc_write_prof.data_max_cycles,

@@ -5,14 +5,39 @@
 #include "emmc_ops.h"
 #include "msc_diag.h"
 #include "CH56x_usb20_devbulk.h"
+#include <stdbool.h>
 
 extern void bot_send_csw(void);
 
+#define READ_RING_SECTORS (UDISK_BUF_SIZE / SECTOR_SIZE)
+
+static inline uint8_t next_read_ring_slot(uint8_t slot)
+{
+    slot++;
+    if (slot == READ_RING_SECTORS)
+        slot = 0;
+    return slot;
+}
+
+static void queue_usb_read_sector(read_diag_t *diag, uint8_t usb_slot,
+                                  uint16_t usb_done)
+{
+    uint8_t *sector = UDisk_In_Buf + usb_slot * SECTOR_SIZE;
+
+    diag_check_usb_sector(diag, sector, usb_done);
+
+    R32_UEP1_TX_DMA = (uint32_t)(uint8_t *)sector;
+    R16_UEP1_T_LEN = SECTOR_SIZE;
+    __asm__ volatile("fence" ::: "memory");
+    R8_UEP1_TX_CTRL = (R8_UEP1_TX_CTRL & ~RB_UEP_TRES_MASK) | UEP_T_RES_ACK;
+}
+
 static void read_stream_usb2(uint32_t actual_lba, uint16_t preqnum)
 {
-    uint16_t sdtran = 0, usbtran = 0;
-    uint8_t sdstep = 0, usbstep = 0;
-    uint8_t lock = 0, flag = 1;
+    uint16_t sd_done = 0, usb_done = 0;
+    uint8_t sd_slot = 0, usb_slot = 0;
+    bool sd_paused_for_usb_buffer = false;
+    bool usb_first_packet = true;
     read_diag_t diag;
 
     uint8_t uep0rxsave = R8_UEP0_RX_CTRL;
@@ -29,29 +54,25 @@ static void read_stream_usb2(uint32_t actual_lba, uint16_t preqnum)
     uint16_t xfer_count = 0;
     while (1)
     {
-        /* NAK immediately on transfer complete to prevent stale DMA race */
-        if (R8_USB_INT_FG & RB_USB_IF_TRANSFER)
+        bool usb_tx_done = R8_USB_INT_FG & RB_USB_IF_TRANSFER;
+
+        if (usb_tx_done)
             R8_UEP1_TX_CTRL = (R8_UEP1_TX_CTRL & ~RB_UEP_TRES_MASK) | UEP_T_RES_NAK;
 
-        if ((sdtran > 1 && usbtran < sdtran - 1) &&
-            ((R8_USB_INT_FG & RB_USB_IF_TRANSFER) || flag))
-        {
-            if (R8_USB_INT_FG & RB_USB_IF_TRANSFER) xfer_count++;
+        /* USB sends one sector behind eMMC so it never sees the sector being filled. */
+        if ((sd_done > 1 && usb_done < sd_done - 1) &&
+            (usb_tx_done || usb_first_packet)) {
+            if (usb_tx_done)
+                xfer_count++;
+
             R8_USB_INT_FG = RB_USB_IF_TRANSFER;
-            flag = 0;
+            usb_first_packet = false;
+            queue_usb_read_sector(&diag, usb_slot, usb_done);
 
-            diag_check_usb_sector(&diag, UDisk_In_Buf + usbstep * SECTOR_SIZE, usbtran);
-
-            R32_UEP1_TX_DMA = (uint32_t)(uint8_t *)(UDisk_In_Buf + usbstep * SECTOR_SIZE);
-            R16_UEP1_T_LEN = SECTOR_SIZE;
-            __asm__ volatile("fence" ::: "memory");
-            R8_UEP1_TX_CTRL = (R8_UEP1_TX_CTRL & ~RB_UEP_TRES_MASK) | UEP_T_RES_ACK;
-
-            usbtran++;
-            usbstep++;
-            if (usbstep == UDISK_BUF_SIZE / SECTOR_SIZE) usbstep = 0;
-            if (lock) {
-                lock = 0;
+            usb_done++;
+            usb_slot = next_read_ring_slot(usb_slot);
+            if (sd_paused_for_usb_buffer) {
+                sd_paused_for_usb_buffer = false;
                 emmc_release_gap_stop();
             }
         }
@@ -59,77 +80,69 @@ static void read_stream_usb2(uint32_t actual_lba, uint16_t preqnum)
         if (R8_USB_INT_FG & RB_USB_IF_SETUOACT)
             R8_USB_INT_FG = RB_USB_IF_SETUOACT;
 
-        if (R16_EMMC_INT_FG & RB_EMMC_IF_BKGAP)
-        {
-            if (phantomdrive_state == STATE_UNLOCKED)
-                phantomdrive_crypt_buf(UDisk_In_Buf + sdstep * SECTOR_SIZE, actual_lba + sdtran, 1);
+        if (R16_EMMC_INT_FG & RB_EMMC_IF_BKGAP) {
+            uint8_t *sector = UDisk_In_Buf + sd_slot * SECTOR_SIZE;
 
-            diag_check_sd_sector(&diag, UDisk_In_Buf + sdstep * SECTOR_SIZE, sdtran);
+            if (phantomdrive_state == STATE_UNLOCKED)
+                phantomdrive_crypt_buf(sector, actual_lba + sd_done, 1);
+
+            diag_check_sd_sector(&diag, sector, sd_done);
 
             R16_EMMC_INT_FG = RB_EMMC_IF_BKGAP;
-            sdtran++;
-            sdstep++;
-            if (sdstep == UDISK_BUF_SIZE / SECTOR_SIZE) sdstep = 0;
-            R32_EMMC_DMA_BEG1 = (uint32_t)(uint8_t *)(UDisk_In_Buf + sdstep * SECTOR_SIZE);
+            sd_done++;
+            sd_slot = next_read_ring_slot(sd_slot);
+            R32_EMMC_DMA_BEG1 = (uint32_t)(uint8_t *)(UDisk_In_Buf + sd_slot * SECTOR_SIZE);
 
-            if ((sdtran - usbtran) < ((UDISK_BUF_SIZE / SECTOR_SIZE) - 2))
+            if ((sd_done - usb_done) < (READ_RING_SECTORS - 2))
                 emmc_release_gap_stop();
             else
-                lock = 1;
+                sd_paused_for_usb_buffer = true;
         }
-        else if (R16_EMMC_INT_FG & RB_EMMC_IF_TRANDONE)
-        {
-            if (phantomdrive_state == STATE_UNLOCKED)
-                phantomdrive_crypt_buf(UDisk_In_Buf + sdstep * SECTOR_SIZE, actual_lba + sdtran, 1);
+        else if (R16_EMMC_INT_FG & RB_EMMC_IF_TRANDONE) {
+            uint8_t *sector = UDisk_In_Buf + sd_slot * SECTOR_SIZE;
 
-            diag_check_sd_sector(&diag, UDisk_In_Buf + sdstep * SECTOR_SIZE, sdtran);
+            if (phantomdrive_state == STATE_UNLOCKED)
+                phantomdrive_crypt_buf(sector, actual_lba + sd_done, 1);
+
+            diag_check_sd_sector(&diag, sector, sd_done);
 
             R16_EMMC_INT_FG = RB_EMMC_IF_TRANDONE | RB_EMMC_IF_CMDDONE;
-            sdtran++;
-            sdstep++;
+            sd_done++;
             break;
         }
     }
 
     /* Drain remaining USB sends after eMMC is done */
-    while (1)
+    while (usb_done < sd_done)
     {
-        if (R8_USB_INT_FG & RB_USB_IF_TRANSFER)
+        bool usb_tx_done = R8_USB_INT_FG & RB_USB_IF_TRANSFER;
+
+        if (usb_tx_done)
             R8_UEP1_TX_CTRL = (R8_UEP1_TX_CTRL & ~RB_UEP_TRES_MASK) | UEP_T_RES_NAK;
 
-        if ((R8_USB_INT_FG & RB_USB_IF_TRANSFER) || flag)
-        {
+        if (usb_tx_done || usb_first_packet) {
             xfer_count++;
             R8_USB_INT_FG = RB_USB_IF_TRANSFER;
-            flag = 0;
+            usb_first_packet = false;
 
-            diag_check_usb_sector(&diag, UDisk_In_Buf + usbstep * SECTOR_SIZE, usbtran);
+            queue_usb_read_sector(&diag, usb_slot, usb_done);
 
-            R32_UEP1_TX_DMA = (uint32_t)(uint8_t *)(UDisk_In_Buf + usbstep * SECTOR_SIZE);
-            R16_UEP1_T_LEN = SECTOR_SIZE;
-            __asm__ volatile("fence" ::: "memory");
-            R8_UEP1_TX_CTRL = (R8_UEP1_TX_CTRL & ~RB_UEP_TRES_MASK) | UEP_T_RES_ACK;
-
-            usbtran++;
-            usbstep++;
-            if (usbstep == UDISK_BUF_SIZE / SECTOR_SIZE) usbstep = 0;
-            if (usbtran == sdtran)
-            {
-                while (!(R8_USB_INT_FG & RB_USB_IF_TRANSFER));
-                R8_USB_INT_FG = RB_USB_IF_TRANSFER;
-                R8_UEP1_TX_CTRL = (R8_UEP1_TX_CTRL & ~RB_UEP_TRES_MASK) | UEP_T_RES_NAK;
-                break;
-            }
+            usb_done++;
+            usb_slot = next_read_ring_slot(usb_slot);
         }
 
         if (R8_USB_INT_FG & RB_USB_IF_SETUOACT)
             R8_USB_INT_FG = RB_USB_IF_SETUOACT;
     }
 
+    while (!(R8_USB_INT_FG & RB_USB_IF_TRANSFER));
+    R8_USB_INT_FG = RB_USB_IF_TRANSFER;
+    R8_UEP1_TX_CTRL = (R8_UEP1_TX_CTRL & ~RB_UEP_TRES_MASK) | UEP_T_RES_NAK;
+
     emmc_stop_multiblock_read();
 
 #ifdef DEBUG_USB
-    diag_log_read_summary(&diag, preqnum, xfer_count, usbtran);
+    diag_log_read_summary(&diag, preqnum, xfer_count, usb_done);
 #endif
 
     R8_UEP1_TX_CTRL &= ~RB_UEP_T_AUTOTOG;

@@ -4,6 +4,7 @@
 #ifndef EMMC_OPS_H_
 #define EMMC_OPS_H_
 
+#include <stdbool.h>
 #include "bot_state.h"
 #include "phantomdrive.h"
 
@@ -53,10 +54,10 @@ static inline void emmc_release_gap_stop(void)
 }
 
 /* Advance circular buffer DMA pointer. Returns 1 if buffer nearly full. */
-static inline int emmc_advance_dma(uint8_t *buf_base,
-                                    uint8_t *sdstep_ptr,
-                                    uint16_t sdtran,
-                                    uint16_t usbtran)
+static inline bool emmc_advance_dma(uint8_t *buf_base,
+                                     uint8_t *sdstep_ptr,
+                                     uint16_t sdtran,
+                                     uint16_t usbtran)
 {
     uint8_t sdstep = *sdstep_ptr;
     sdstep++;
@@ -66,9 +67,9 @@ static inline int emmc_advance_dma(uint8_t *buf_base,
 
     if ((sdtran - usbtran) < ((UDISK_BUF_SIZE / SECTOR_SIZE) - 2)) {
         emmc_release_gap_stop();
-        return 0;
+        return false;
     }
-    return 1;
+    return true;
 }
 
 #endif /* EMMC_OPS_H_ */

@@ -9,7 +9,6 @@
 #define LOCKED_SECTORS  (16777216UL)  /* 8GB in sectors */
 
 extern volatile uint8_t phantomdrive_state;
-extern volatile uint8_t phantomdrive_unlock_pending;
 extern uint32_t aes_key[8] __attribute__((section(".DMADATA")));
 
 void phantomdrive_init(void);

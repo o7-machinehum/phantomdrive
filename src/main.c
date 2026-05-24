@@ -61,7 +61,7 @@ int main()
 
 	if(sta == OP_SUCCESS)
 	{
-		g_bot.device_ready |= BOT_FLAG_DEVICE_READY;
+		g_bot.device_ready = true;
 		log_printf("SD OK: %d sectors (%d MB)\r\n",
 			TF_EMMCParam.EMMCSecNum,
 			TF_EMMCParam.EMMCSecNum / 2048);

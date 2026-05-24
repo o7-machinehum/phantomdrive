@@ -5,6 +5,7 @@
 #define WRITE_PROFILE_H_
 
 #include <stdint.h>
+#include <stdbool.h>
 
 #ifdef DEBUG
 
@@ -22,7 +23,7 @@ void write_profile_emmc_invalid_addr(void);
 void write_profile_emmc_cmd25(uint32_t start, uint8_t status);
 void write_profile_emmc_bkgap_wait(uint32_t start, uint32_t dat0_low_cycles);
 void write_profile_emmc_trandone_wait(uint32_t start);
-void write_profile_emmc_data(uint32_t start, uint8_t failed);
+void write_profile_emmc_data(uint32_t start, bool failed);
 void write_profile_emmc_cmd12(uint32_t start, uint8_t status);
 void write_profile_emmc_cmd13(uint32_t start, uint8_t status, uint32_t response);
 void write_profile_emmc_done(uint16_t sectors);
@@ -51,7 +52,7 @@ static inline void write_profile_emmc_bkgap_wait(uint32_t start, uint32_t dat0_l
     (void)dat0_low_cycles;
 }
 static inline void write_profile_emmc_trandone_wait(uint32_t start) { (void)start; }
-static inline void write_profile_emmc_data(uint32_t start, uint8_t failed)
+static inline void write_profile_emmc_data(uint32_t start, bool failed)
 {
     (void)start;
     (void)failed;
