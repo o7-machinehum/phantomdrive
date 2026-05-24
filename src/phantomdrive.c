@@ -26,45 +26,6 @@ void phantomdrive_init(void)
 	log_printf("phantomdrive: locked, %lu sectors\r\n", LOCKED_SECTORS);
 }
 
-/* Encrypt zeros, re-encrypt (CTR involutory), verify zeros restored */
-static void ecdc_selftest(void)
-{
-	uint32_t ctr[4] = {0, 0x12345678, 0, 0};
-
-	memset(ecdc_test_buf, 0, 16);
-	uint32_t before = *(uint32_t*)ecdc_test_buf;
-
-	ECDC_SetCount((puint32_t)ctr);
-	ECDC_Excute(SELFDMA_ENCRY, MODE_LITTLE_ENDIAN);
-	ECDC_SelfDMA((uint32_t)ecdc_test_buf, 1);
-	uint32_t after_enc = *(uint32_t*)ecdc_test_buf;
-
-	ECDC_SetCount((puint32_t)ctr);
-	ECDC_Excute(SELFDMA_ENCRY, MODE_LITTLE_ENDIAN);
-	ECDC_SelfDMA((uint32_t)ecdc_test_buf, 1);
-	uint32_t after_dec = *(uint32_t*)ecdc_test_buf;
-
-	log_printf("phantomdrive: ECDC test: before=%08lx enc=%08lx dec=%08lx %s\r\n",
-	           before, after_enc, after_dec,
-	           (after_enc != 0 && after_dec == 0) ? "PASS" : "FAIL");
-
-	/* Verify SELFDMA_DECRY behaves same as SELFDMA_ENCRY for CTR */
-	memset(ecdc_test_buf, 0, 16);
-	ECDC_SetCount((puint32_t)ctr);
-	ECDC_Excute(SELFDMA_ENCRY, MODE_LITTLE_ENDIAN);
-	ECDC_SelfDMA((uint32_t)ecdc_test_buf, 1);
-	uint32_t enc2 = *(uint32_t*)ecdc_test_buf;
-
-	ECDC_SetCount((puint32_t)ctr);
-	ECDC_Excute(SELFDMA_DECRY, MODE_LITTLE_ENDIAN);
-	ECDC_SelfDMA((uint32_t)ecdc_test_buf, 1);
-	uint32_t dec2 = *(uint32_t*)ecdc_test_buf;
-
-	log_printf("phantomdrive: ECDC enc=%08lx decry=%08lx %s\r\n",
-	           enc2, dec2,
-	           (dec2 == 0) ? "DECRY=ENCRY" : "DECRY!=ENCRY");
-}
-
 static void phantomdrive_do_unlock(void)
 {
 	log_printf("phantomdrive: deriving key (%u bytes)...\r\n", (unsigned)pending_pw_len);
@@ -79,7 +40,6 @@ static void phantomdrive_do_unlock(void)
 	uint32_t initial_ctr[4] = {0, 0, 0, 0};
 	ECDC_Init(MODE_AES_CTR, ECDCCLK_240MHZ, KEYLENGTH_256BIT,
 	          (puint32_t)aes_key, (puint32_t)initial_ctr);
-	ecdc_selftest();
 
 	g_bot.capacity = TF_EMMCParam.EMMCSecNum - LOCKED_SECTORS;
 	phantomdrive_state = STATE_UNLOCKED;
