@@ -11,6 +11,32 @@ extern void bot_send_csw(void);
 
 #define READ_RING_SECTORS (UDISK_BUF_SIZE / SECTOR_SIZE)
 
+/*
+  READ10 ring buffer: UDisk_In_Buf, 80 slots x 512 bytes
+
+            USB sends older ready slot
+                      |
+                      v
+  +--------+--------+--------+-------------+-------------+
+  | slot 0 | slot 1 | slot 2 | slot 3      | slot 4      |
+  | sent   | USB TX | ready  | decrypt now | eMMC fills  | ...
+  +--------+--------+--------+-------------+-------------+
+             ^        ^          ^              ^
+             |        |          |              |
+          usb_slot    |      completed_slot   emmc_slot
+                      |
+               decrypted and waiting
+*/
+
+typedef struct {
+    uint16_t emmc_done; // Count of how many sectors eMMC has finished reading into RAM
+    uint16_t usb_done; // Count of how many sectors have been handled to USB for TX
+    uint8_t emmc_slot; // During a read, eMMC writes SD-Card data to... UDisk_In_Buf + emmc_slot * 512
+    uint8_t usb_slot; // During a read, USB reads data from... UDisk_In_Buf + usb_slot + emmc_slot * 512
+    bool emmc_paused_for_usb_buffer;
+    bool usb_first_packet;
+} read_pipe_t;
+
 static inline uint8_t next_read_ring_slot(uint8_t slot)
 {
     slot++;
@@ -19,10 +45,25 @@ static inline uint8_t next_read_ring_slot(uint8_t slot)
     return slot;
 }
 
-static void queue_usb_read_sector(read_diag_t *diag, uint8_t usb_slot,
+static inline uint8_t *read_ring_slot(uint8_t slot)
+{
+    return UDisk_In_Buf + slot * SECTOR_SIZE;
+}
+
+static inline bool read_pipe_has_safe_usb_sector(const read_pipe_t *pipe)
+{
+    return pipe->emmc_done > 1 && pipe->usb_done < pipe->emmc_done - 1;
+}
+
+static inline bool read_pipe_has_space_for_emmc(const read_pipe_t *pipe)
+{
+    return (pipe->emmc_done - pipe->usb_done) < (READ_RING_SECTORS - 2);
+}
+
+static void queue_usb_read_sector(read_diag_t *diag, uint8_t send_slot,
                                   uint16_t usb_done)
 {
-    uint8_t *sector = UDisk_In_Buf + usb_slot * SECTOR_SIZE;
+    uint8_t *sector = read_ring_slot(send_slot);
 
     diag_check_usb_sector(diag, sector, usb_done);
 
@@ -34,10 +75,14 @@ static void queue_usb_read_sector(read_diag_t *diag, uint8_t usb_slot,
 
 static void read_stream_usb2(uint32_t actual_lba, uint16_t preqnum)
 {
-    uint16_t sd_done = 0, usb_done = 0;
-    uint8_t sd_slot = 0, usb_slot = 0;
-    bool sd_paused_for_usb_buffer = false;
-    bool usb_first_packet = true;
+    read_pipe_t pipe = {
+        .emmc_done = 0,
+        .usb_done = 0,
+        .emmc_slot = 0,
+        .usb_slot = 0,
+        .emmc_paused_for_usb_buffer = false,
+        .usb_first_packet = true,
+    };
     read_diag_t diag;
 
     uint8_t uep0rxsave = R8_UEP0_RX_CTRL;
@@ -60,19 +105,25 @@ static void read_stream_usb2(uint32_t actual_lba, uint16_t preqnum)
             R8_UEP1_TX_CTRL = (R8_UEP1_TX_CTRL & ~RB_UEP_TRES_MASK) | UEP_T_RES_NAK;
 
         /* USB sends one sector behind eMMC so it never sees the sector being filled. */
-        if ((sd_done > 1 && usb_done < sd_done - 1) &&
-            (usb_tx_done || usb_first_packet)) {
+        if (read_pipe_has_safe_usb_sector(&pipe) &&
+            (usb_tx_done || pipe.usb_first_packet)) {
+            uint8_t send_slot = pipe.usb_slot;
+
             if (usb_tx_done)
                 xfer_count++;
 
+            // Clear USB transfer complete interrupt flag
             R8_USB_INT_FG = RB_USB_IF_TRANSFER;
-            usb_first_packet = false;
-            queue_usb_read_sector(&diag, usb_slot, usb_done);
 
-            usb_done++;
-            usb_slot = next_read_ring_slot(usb_slot);
-            if (sd_paused_for_usb_buffer) {
-                sd_paused_for_usb_buffer = false;
+            pipe.usb_first_packet = false;
+
+            // We can send this slot out
+            queue_usb_read_sector(&diag, send_slot, pipe.usb_done);
+
+            pipe.usb_done++;
+            pipe.usb_slot = next_read_ring_slot(pipe.usb_slot);
+            if (pipe.emmc_paused_for_usb_buffer) {
+                pipe.emmc_paused_for_usb_buffer = false;
                 emmc_release_gap_stop();
             }
         }
@@ -81,54 +132,58 @@ static void read_stream_usb2(uint32_t actual_lba, uint16_t preqnum)
             R8_USB_INT_FG = RB_USB_IF_SETUOACT;
 
         if (R16_EMMC_INT_FG & RB_EMMC_IF_BKGAP) {
-            uint8_t *sector = UDisk_In_Buf + sd_slot * SECTOR_SIZE;
+            uint8_t completed_slot = pipe.emmc_slot;
+            uint8_t *completed_sector = read_ring_slot(completed_slot);
 
             if (phantomdrive_state == STATE_UNLOCKED)
-                phantomdrive_crypt_buf(sector, actual_lba + sd_done, 1);
+                phantomdrive_crypt_buf(completed_sector, actual_lba + pipe.emmc_done, 1);
 
-            diag_check_sd_sector(&diag, sector, sd_done);
+            diag_check_sd_sector(&diag, completed_sector, pipe.emmc_done);
 
             R16_EMMC_INT_FG = RB_EMMC_IF_BKGAP;
-            sd_done++;
-            sd_slot = next_read_ring_slot(sd_slot);
-            R32_EMMC_DMA_BEG1 = (uint32_t)(uint8_t *)(UDisk_In_Buf + sd_slot * SECTOR_SIZE);
+            pipe.emmc_done++;
+            pipe.emmc_slot = next_read_ring_slot(pipe.emmc_slot);
+            R32_EMMC_DMA_BEG1 = (uint32_t)(uint8_t *)read_ring_slot(pipe.emmc_slot);
 
-            if ((sd_done - usb_done) < (READ_RING_SECTORS - 2))
+            if (read_pipe_has_space_for_emmc(&pipe))
                 emmc_release_gap_stop();
             else
-                sd_paused_for_usb_buffer = true;
+                pipe.emmc_paused_for_usb_buffer = true;
         }
         else if (R16_EMMC_INT_FG & RB_EMMC_IF_TRANDONE) {
-            uint8_t *sector = UDisk_In_Buf + sd_slot * SECTOR_SIZE;
+            uint8_t completed_slot = pipe.emmc_slot;
+            uint8_t *completed_sector = read_ring_slot(completed_slot);
 
             if (phantomdrive_state == STATE_UNLOCKED)
-                phantomdrive_crypt_buf(sector, actual_lba + sd_done, 1);
+                phantomdrive_crypt_buf(completed_sector, actual_lba + pipe.emmc_done, 1);
 
-            diag_check_sd_sector(&diag, sector, sd_done);
+            diag_check_sd_sector(&diag, completed_sector, pipe.emmc_done);
 
             R16_EMMC_INT_FG = RB_EMMC_IF_TRANDONE | RB_EMMC_IF_CMDDONE;
-            sd_done++;
+            pipe.emmc_done++;
             break;
         }
     }
 
     /* Drain remaining USB sends after eMMC is done */
-    while (usb_done < sd_done)
+    while (pipe.usb_done < pipe.emmc_done)
     {
         bool usb_tx_done = R8_USB_INT_FG & RB_USB_IF_TRANSFER;
 
         if (usb_tx_done)
             R8_UEP1_TX_CTRL = (R8_UEP1_TX_CTRL & ~RB_UEP_TRES_MASK) | UEP_T_RES_NAK;
 
-        if (usb_tx_done || usb_first_packet) {
+        if (usb_tx_done || pipe.usb_first_packet) {
+            uint8_t send_slot = pipe.usb_slot;
+
             xfer_count++;
             R8_USB_INT_FG = RB_USB_IF_TRANSFER;
-            usb_first_packet = false;
+            pipe.usb_first_packet = false;
 
-            queue_usb_read_sector(&diag, usb_slot, usb_done);
+            queue_usb_read_sector(&diag, send_slot, pipe.usb_done);
 
-            usb_done++;
-            usb_slot = next_read_ring_slot(usb_slot);
+            pipe.usb_done++;
+            pipe.usb_slot = next_read_ring_slot(pipe.usb_slot);
         }
 
         if (R8_USB_INT_FG & RB_USB_IF_SETUOACT)
@@ -142,7 +197,7 @@ static void read_stream_usb2(uint32_t actual_lba, uint16_t preqnum)
     emmc_stop_multiblock_read();
 
 #ifdef DEBUG_USB
-    diag_log_read_summary(&diag, preqnum, xfer_count, usb_done);
+    diag_log_read_summary(&diag, preqnum, xfer_count, pipe.usb_done);
 #endif
 
     R8_UEP1_TX_CTRL &= ~RB_UEP_T_AUTOTOG;
