@@ -1,4 +1,4 @@
-/* 
+/*
 B.VERNOUX 18June2022
  => Changed SECTION ".DMADATA :" to ".DMADATA (NOLOAD) :"
  => Added in section ".DMADATA" => *(.DMADATA*)
@@ -29,13 +29,13 @@ SECTIONS
 		. = ALIGN(4);
 		_einit = .;
 	} >FLASH AT>FLASH
-	
+
     .vector :
     {
         *(.vector);
         . = ALIGN(64);
-    } >FLASH AT>FLASH 
-	
+    } >FLASH AT>FLASH
+
 	.text :
 	{
 		. = ALIGN(4);
@@ -47,7 +47,7 @@ SECTIONS
 		*(.glue_7t)
 		*(.gnu.linkonce.t.*)
 		. = ALIGN(4);
-	} >FLASH AT>FLASH 
+	} >FLASH AT>FLASH
 
 	.fini :
 	{
@@ -56,31 +56,31 @@ SECTIONS
 	} >FLASH AT>FLASH
 
 	PROVIDE( _etext = . );
-	PROVIDE( _eitcm = . );	
+	PROVIDE( _eitcm = . );
 
 	.preinit_array  :
 	{
 	  PROVIDE_HIDDEN (__preinit_array_start = .);
 	  KEEP (*(.preinit_array))
 	  PROVIDE_HIDDEN (__preinit_array_end = .);
-	} >FLASH AT>FLASH 
-	
+	} >FLASH AT>FLASH
+
 	.init_array     :
 	{
 	  PROVIDE_HIDDEN (__init_array_start = .);
 	  KEEP (*(SORT_BY_INIT_PRIORITY(.init_array.*) SORT_BY_INIT_PRIORITY(.ctors.*)))
 	  KEEP (*(.init_array EXCLUDE_FILE (*crtbegin.o *crtbegin?.o *crtend.o *crtend?.o ) .ctors))
 	  PROVIDE_HIDDEN (__init_array_end = .);
-	} >FLASH AT>FLASH 
-	
+	} >FLASH AT>FLASH
+
 	.fini_array     :
 	{
 	  PROVIDE_HIDDEN (__fini_array_start = .);
 	  KEEP (*(SORT_BY_INIT_PRIORITY(.fini_array.*) SORT_BY_INIT_PRIORITY(.dtors.*)))
 	  KEEP (*(.fini_array EXCLUDE_FILE (*crtbegin.o *crtbegin?.o *crtend.o *crtend?.o ) .dtors))
 	  PROVIDE_HIDDEN (__fini_array_end = .);
-	} >FLASH AT>FLASH 
-	
+	} >FLASH AT>FLASH
+
 	.ctors          :
 	{
 	  /* gcc uses crtbegin.o to find the start of
@@ -101,8 +101,8 @@ SECTIONS
 	  KEEP (*(EXCLUDE_FILE (*crtend.o *crtend?.o ) .ctors))
 	  KEEP (*(SORT(.ctors.*)))
 	  KEEP (*(.ctors))
-	} >FLASH AT>FLASH 
-	
+	} >FLASH AT>FLASH
+
 	.dtors          :
 	{
 	  KEEP (*crtbegin.o(.dtors))
@@ -110,17 +110,17 @@ SECTIONS
 	  KEEP (*(EXCLUDE_FILE (*crtend.o *crtend?.o ) .dtors))
 	  KEEP (*(SORT(.dtors.*)))
 	  KEEP (*(.dtors))
-	} >FLASH AT>FLASH 
+	} >FLASH AT>FLASH
 
 	.dalign :
 	{
 		. = ALIGN(4);
 		PROVIDE(_data_vma = .);
-	} >RAM AT>FLASH	
+	} >RAM AT>FLASH
 
 	.dlalign :
 	{
-		. = ALIGN(4); 
+		. = ALIGN(4);
 		PROVIDE(_data_lma = .);
 	} >FLASH AT>FLASH
 
@@ -151,21 +151,19 @@ SECTIONS
   	    *(.sbss*)
         *(.gnu.linkonce.sb.*)
 		*(.bss*)
-     	*(.gnu.linkonce.b.*)		
+     	*(.gnu.linkonce.b.*)
 		*(COMMON*)
 		. = ALIGN(4);
 		PROVIDE( _ebss = .);
 	} >RAM AT>FLASH
-	
+
 	PROVIDE( _end = _ebss);
-	PROVIDE( end = . );	
-	
+	PROVIDE( end = . );
+
 	.DMADATA (NOLOAD) :
     {
         . = ALIGN(16);
         PROVIDE( _dmadata_start = .);
-        *(.dmadata*)
-        *(.dmadata.*)
         *(.DMADATA*)
         . = ALIGN(16);
        PROVIDE( _dmadata_end = .);
@@ -177,7 +175,7 @@ SECTIONS
         PROVIDE(_susrstack = . );
         . = . + __stack_size;
         PROVIDE( _eusrstack = .);
-    } >RAM 
+    } >RAM
 }
 
 

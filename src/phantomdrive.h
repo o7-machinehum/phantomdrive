@@ -19,7 +19,4 @@ void phantomdrive_crypt_buf(uint8_t *buf, uint32_t sd_lba, uint16_t num_sectors)
 void phantomdrive_ecdc_set_sector_nonce(uint32_t sd_lba);
 void phantomdrive_ecdc_disable_data_path(void);
 
-#define phantomdrive_encrypt_buf phantomdrive_crypt_buf
-#define phantomdrive_decrypt_buf phantomdrive_crypt_buf
-
 #endif /* PHANTOMDRIVE_H_ */
