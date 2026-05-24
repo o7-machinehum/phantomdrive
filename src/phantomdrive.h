@@ -16,7 +16,6 @@ void phantomdrive_init(void);
 void phantomdrive_snoop_write(uint8_t *buf, uint32_t len);
 void phantomdrive_poll(void);
 void phantomdrive_crypt_buf(uint8_t *buf, uint32_t sd_lba, uint16_t num_sectors);
-void phantomdrive_ecdc_set_sector_nonce(uint32_t sd_lba);
 void phantomdrive_ecdc_disable_data_path(void);
 
 #endif /* PHANTOMDRIVE_H_ */

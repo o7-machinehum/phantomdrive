@@ -10,7 +10,6 @@ volatile uint8_t phantomdrive_state = STATE_LOCKED;
 volatile uint8_t phantomdrive_unlock_pending = 0;
 
 __attribute__((aligned(16))) uint32_t aes_key[8] __attribute__((section(".DMADATA")));
-__attribute__((aligned(16))) static uint8_t ecdc_test_buf[16] __attribute__((section(".DMADATA")));
 
 static uint8_t pending_pw[128];
 static size_t pending_pw_len;
