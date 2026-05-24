@@ -11,7 +11,7 @@
 #include "scsi_tables.h"
 #include "msc_read.h"
 #include "msc_write.h"
-#include "ovrdrive.h"
+#include "phantomdrive.h"
 #include "CH56x_usb20_devbulk.h"
 #include "CH56x_debug_log.h"
 #include <string.h>
@@ -326,16 +326,18 @@ void bot_send_csw(void)
 void bot_poll(void)
 {
     if (g_bot.read_pending == 1) {
+        // Host wants to read sectors from SD
         g_bot.read_pending = 0;
         msc_read_sectors();
     }
 
     if (g_bot.write_pending == 1) {
+        // Host wants to write sectors to SD
         g_bot.write_pending = 0;
         msc_write_sectors();
 
         R8_UEP1_RX_CTRL = (R8_UEP1_RX_CTRL & ~RB_UEP_RRES_MASK) | UEP_R_RES_ACK;
     }
 
-    ovrd_poll();
+    phantomdrive_poll();
 }

@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Write-verify diagnostic for OVRDrive USB Mass Storage.
+Write-verify diagnostic for Phantomdrive USB Mass Storage.
 
 Writes known patterns to a raw block device, reads them back, and analyzes
 any corruption to classify the failure mode. Optionally captures firmware
@@ -115,7 +115,7 @@ def serial_logger(port, baudrate, log_path, stop_event):
 
 def main():
     parser = argparse.ArgumentParser(
-        description="Write-verify diagnostic for OVRDrive"
+        description="Write-verify diagnostic for Phantomdrive"
     )
     parser.add_argument(
         "--dev", required=True, help="Block device (e.g. /dev/sdX)"

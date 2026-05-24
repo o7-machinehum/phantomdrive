@@ -166,7 +166,7 @@ void sha256(const uint8_t *data, size_t len, uint8_t hash_out[32])
  *****************************************************************************/
 
 static const uint8_t kdf_salt[16] = "OVRDrive-v2-salt";
-#define KDF_ROUNDS 1000
+#define KDF_ROUNDS 100000
 
 void derive_key(const uint8_t *password, size_t pw_len, uint8_t key_out[32])
 {

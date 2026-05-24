@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Speed benchmark for OVRDrive USB Mass Storage.
+Speed benchmark for Phantomdrive USB Mass Storage.
 
 Tests sequential read/write throughput at various block sizes using
 direct I/O (O_DIRECT) to bypass OS page cache.
@@ -74,7 +74,7 @@ def test_write(dev, block_size_kb, total_mb):
 
 
 def main():
-    parser = argparse.ArgumentParser(description="OVRDrive speed benchmark")
+    parser = argparse.ArgumentParser(description="Phantomdrive speed benchmark")
     parser.add_argument("--dev", required=True, help="Block device (e.g. /dev/sdX)")
     parser.add_argument("--size", type=int, default=16, help="Test size in MB (default: 16)")
     parser.add_argument("--read-only", action="store_true", help="Skip write tests")
@@ -95,7 +95,7 @@ def main():
 
     block_sizes = [64, 128, 512, 1024]  # KB
 
-    print(f"OVRDrive Speed Benchmark")
+    print(f"Phantomdrive Speed Benchmark")
     print(f"Device: {dev}  Test size: {total_mb} MB")
     print(f"{'='*60}")
 

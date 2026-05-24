@@ -9,7 +9,7 @@
 
 #include "bot.h"
 #include "sd.h"
-#include "ovrdrive.h"
+#include "phantomdrive.h"
 
 #undef FREQ_SYS
 #define FREQ_SYS (120000000)
@@ -65,7 +65,7 @@ int main()
 		log_printf("SD OK: %d sectors (%d MB)\r\n",
 			TF_EMMCParam.EMMCSecNum,
 			TF_EMMCParam.EMMCSecNum / 2048);
-		ovrd_init();
+		phantomdrive_init();
 	}
 	else
 	{

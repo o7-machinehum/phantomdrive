@@ -5,11 +5,11 @@
 #define EMMC_OPS_H_
 
 #include "bot_state.h"
-#include "ovrdrive.h"
+#include "phantomdrive.h"
 
 static inline uint32_t compute_physical_lba(uint32_t host_lba)
 {
-    if (ovrd_state == STATE_UNLOCKED)
+    if (phantomdrive_state == STATE_UNLOCKED)
         return host_lba + LOCKED_SECTORS;
     return host_lba;
 }

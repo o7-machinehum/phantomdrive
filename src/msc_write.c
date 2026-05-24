@@ -79,7 +79,7 @@ static uint8_t write_chunk_to_sd_profiled(uint8_t *buf, uint32_t write_lba, uint
     if (status == CMD_FAILED)
         return OP_FAILED;
 
-    ovrd_ecdc_disable_data_path();
+    phantomdrive_ecdc_disable_data_path();
     R32_EMMC_TRAN_MODE = RB_EMMC_DMA_DIR;
     R32_EMMC_DMA_BEG1 = (uint32_t)buf;
     R32_EMMC_BLOCK_CFG = (TF_EMMCParam.EMMCSecSize << 16) | *reqnum;
@@ -105,7 +105,7 @@ static uint8_t write_chunk_to_sd_profiled(uint8_t *buf, uint32_t write_lba, uint
 #endif
         } else if (R16_EMMC_INT_FG & RB_EMMC_IF_TRANDONE) {
             write_profile_emmc_trandone_wait(wait_start);
-            ovrd_ecdc_disable_data_path();
+            phantomdrive_ecdc_disable_data_path();
             R16_EMMC_INT_FG = RB_EMMC_IF_CMDDONE;
             cmd_arg_val = 0;
             cmd_set_val = RB_EMMC_CKIDX |
@@ -117,7 +117,7 @@ static uint8_t write_chunk_to_sd_profiled(uint8_t *buf, uint32_t write_lba, uint
         }
 
         if (TF_EMMCParam.EMMCOpErr) {
-            ovrd_ecdc_disable_data_path();
+            phantomdrive_ecdc_disable_data_path();
             write_profile_emmc_data(prof_start, 1);
             return CMD_FAILED;
         }
@@ -153,7 +153,7 @@ static uint8_t write_chunk_to_sd(uint8_t *buf, uint32_t write_lba, uint16_t chun
     TF_EMMCParam.EMMCOpErr = 0;
     TF_EMMCParam.EMMCSecSize = SECTOR_SIZE;
 
-    if (ovrd_state == STATE_UNLOCKED)
+    if (phantomdrive_state == STATE_UNLOCKED)
         status = write_chunk_to_sd_profiled(buf, write_lba, &reqnum);
     else
         status = EMMCCardWriteMulSec(&TF_EMMCParam, &reqnum, buf, write_lba);
@@ -211,11 +211,11 @@ static uint8_t write_received_chunk(uint8_t *buf, uint32_t lba, uint16_t chunk_s
     uint32_t prof_start = write_profile_now();
 
     write_profile_count_chunk();
-    ovrd_snoop_write(buf, (uint32_t)chunk_sectors * SECTOR_SIZE);
+    phantomdrive_snoop_write(buf, (uint32_t)chunk_sectors * SECTOR_SIZE);
     write_profile_add_snoop(prof_start);
-    if (ovrd_state == STATE_UNLOCKED) {
+    if (phantomdrive_state == STATE_UNLOCKED) {
         prof_start = write_profile_now();
-        ovrd_crypt_buf(buf, physical_lba, chunk_sectors);
+        phantomdrive_crypt_buf(buf, physical_lba, chunk_sectors);
         write_profile_add_crypt(prof_start);
     }
     return write_chunk_to_sd(buf, physical_lba, chunk_sectors);

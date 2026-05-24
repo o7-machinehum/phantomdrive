@@ -61,8 +61,8 @@ static void read_stream_usb2(uint32_t actual_lba, uint16_t preqnum)
 
         if (R16_EMMC_INT_FG & RB_EMMC_IF_BKGAP)
         {
-            if (ovrd_state == STATE_UNLOCKED)
-                ovrd_crypt_buf(UDisk_In_Buf + sdstep * SECTOR_SIZE, actual_lba + sdtran, 1);
+            if (phantomdrive_state == STATE_UNLOCKED)
+                phantomdrive_crypt_buf(UDisk_In_Buf + sdstep * SECTOR_SIZE, actual_lba + sdtran, 1);
 
             diag_check_sd_sector(&diag, UDisk_In_Buf + sdstep * SECTOR_SIZE, sdtran);
 
@@ -79,8 +79,8 @@ static void read_stream_usb2(uint32_t actual_lba, uint16_t preqnum)
         }
         else if (R16_EMMC_INT_FG & RB_EMMC_IF_TRANDONE)
         {
-            if (ovrd_state == STATE_UNLOCKED)
-                ovrd_crypt_buf(UDisk_In_Buf + sdstep * SECTOR_SIZE, actual_lba + sdtran, 1);
+            if (phantomdrive_state == STATE_UNLOCKED)
+                phantomdrive_crypt_buf(UDisk_In_Buf + sdstep * SECTOR_SIZE, actual_lba + sdtran, 1);
 
             diag_check_sd_sector(&diag, UDisk_In_Buf + sdstep * SECTOR_SIZE, sdtran);
 

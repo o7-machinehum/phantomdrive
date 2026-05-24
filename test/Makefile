@@ -1,6 +1,6 @@
 CC = gcc
 CFLAGS = -Wall -Wextra -O2
-LDLIBS = -lcrypto
+LDLIBS = -lcrypto -lssl
 
 sha256_test: sha256_test.o crypto.o
 	$(CC) $^ $(LDLIBS) -o $@

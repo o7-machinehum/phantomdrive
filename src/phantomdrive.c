@@ -1,4 +1,4 @@
-#include "ovrdrive.h"
+#include "phantomdrive.h"
 #include "crypto.h"
 #include "bot_state.h"
 #include "CH56x_ecdc.h"
@@ -6,8 +6,8 @@
 #include "CH56x_usb20_devbulk.h"
 #include <string.h>
 
-volatile uint8_t ovrd_state = STATE_LOCKED;
-volatile uint8_t ovrd_unlock_pending = 0;
+volatile uint8_t phantomdrive_state = STATE_LOCKED;
+volatile uint8_t phantomdrive_unlock_pending = 0;
 
 __attribute__((aligned(16))) uint32_t aes_key[8] __attribute__((section(".DMADATA")));
 __attribute__((aligned(16))) static uint8_t ecdc_test_buf[16] __attribute__((section(".DMADATA")));
@@ -16,14 +16,14 @@ static uint8_t pending_pw[128];
 static size_t pending_pw_len;
 static uint8_t pw_partial;
 
-void ovrd_init(void)
+void phantomdrive_init(void)
 {
 	R16_ECEC_CTRL = 0;
 	R8_ECDC_INT_FG = 0xFF;
 
 	g_bot.capacity = LOCKED_SECTORS;
-	ovrd_state = STATE_LOCKED;
-	log_printf("ovrd: locked, %lu sectors\r\n", LOCKED_SECTORS);
+	phantomdrive_state = STATE_LOCKED;
+	log_printf("phantomdrive: locked, %lu sectors\r\n", LOCKED_SECTORS);
 }
 
 /* Encrypt zeros, re-encrypt (CTR involutory), verify zeros restored */
@@ -44,7 +44,7 @@ static void ecdc_selftest(void)
 	ECDC_SelfDMA((uint32_t)ecdc_test_buf, 1);
 	uint32_t after_dec = *(uint32_t*)ecdc_test_buf;
 
-	log_printf("ovrd: ECDC test: before=%08lx enc=%08lx dec=%08lx %s\r\n",
+	log_printf("phantomdrive: ECDC test: before=%08lx enc=%08lx dec=%08lx %s\r\n",
 	           before, after_enc, after_dec,
 	           (after_enc != 0 && after_dec == 0) ? "PASS" : "FAIL");
 
@@ -60,14 +60,14 @@ static void ecdc_selftest(void)
 	ECDC_SelfDMA((uint32_t)ecdc_test_buf, 1);
 	uint32_t dec2 = *(uint32_t*)ecdc_test_buf;
 
-	log_printf("ovrd: ECDC enc=%08lx decry=%08lx %s\r\n",
+	log_printf("phantomdrive: ECDC enc=%08lx decry=%08lx %s\r\n",
 	           enc2, dec2,
 	           (dec2 == 0) ? "DECRY=ENCRY" : "DECRY!=ENCRY");
 }
 
-static void ovrd_do_unlock(void)
+static void phantomdrive_do_unlock(void)
 {
-	log_printf("ovrd: deriving key (%u bytes)...\r\n", (unsigned)pending_pw_len);
+	log_printf("phantomdrive: deriving key (%u bytes)...\r\n", (unsigned)pending_pw_len);
 
 	uint8_t key_bytes[32];
 	derive_key(pending_pw, pending_pw_len, key_bytes);
@@ -82,9 +82,9 @@ static void ovrd_do_unlock(void)
 	ecdc_selftest();
 
 	g_bot.capacity = TF_EMMCParam.EMMCSecNum - LOCKED_SECTORS;
-	ovrd_state = STATE_UNLOCKED;
+	phantomdrive_state = STATE_UNLOCKED;
 
-	log_printf("ovrd: unlocked, %lu sectors\r\n", g_bot.capacity);
+	log_printf("phantomdrive: unlocked, %lu sectors\r\n", g_bot.capacity);
 
 	g_bot.transfer_flags = 0;
 	g_bot.read_pending = 0;
@@ -93,12 +93,12 @@ static void ovrd_do_unlock(void)
 	PFIC_EnableIRQ(USBHS_IRQn);
 	USB20_Device_Init(ENABLE);
 
-	log_printf("ovrd: re-enumerated\r\n");
+	log_printf("phantomdrive: re-enumerated\r\n");
 }
 
-void ovrd_snoop_write(uint8_t *buf, uint32_t len)
+void phantomdrive_snoop_write(uint8_t *buf, uint32_t len)
 {
-	if (ovrd_state != STATE_LOCKED || ovrd_unlock_pending)
+	if (phantomdrive_state != STATE_LOCKED || phantomdrive_unlock_pending)
 		return;
 
 	/* Continue appending password from previous buffer */
@@ -113,8 +113,8 @@ void ovrd_snoop_write(uint8_t *buf, uint32_t len)
 		if (end < len || pending_pw_len >= sizeof(pending_pw)) {
 			pw_partial = 0;
 			if (pending_pw_len > 0) {
-				ovrd_unlock_pending = 1;
-				log_printf("ovrd: password snooped (%u bytes)\r\n",
+				phantomdrive_unlock_pending = 1;
+				log_printf("phantomdrive: password snooped (%u bytes)\r\n",
 				           (unsigned)pending_pw_len);
 			}
 		}
@@ -144,8 +144,8 @@ void ovrd_snoop_write(uint8_t *buf, uint32_t len)
 
 		if (pw_end < len || pw_len >= sizeof(pending_pw)) {
 			if (pw_len > 0) {
-				ovrd_unlock_pending = 1;
-				log_printf("ovrd: password snooped (%u bytes)\r\n",
+				phantomdrive_unlock_pending = 1;
+				log_printf("phantomdrive: password snooped (%u bytes)\r\n",
 				           (unsigned)pw_len);
 			}
 		} else {
@@ -155,15 +155,15 @@ void ovrd_snoop_write(uint8_t *buf, uint32_t len)
 	}
 }
 
-void ovrd_poll(void)
+void phantomdrive_poll(void)
 {
-	if (!ovrd_unlock_pending)
+	if (!phantomdrive_unlock_pending)
 		return;
-	ovrd_unlock_pending = 0;
-	ovrd_do_unlock();
+	phantomdrive_unlock_pending = 0;
+	phantomdrive_do_unlock();
 }
 
-void ovrd_ecdc_set_sector_nonce(uint32_t sd_lba)
+void phantomdrive_ecdc_set_sector_nonce(uint32_t sd_lba)
 {
 	uint32_t ctr[4];
 	ctr[0] = 0;
@@ -173,26 +173,26 @@ void ovrd_ecdc_set_sector_nonce(uint32_t sd_lba)
 	ECDC_SetCount((puint32_t)ctr);
 }
 
-void ovrd_ecdc_disable_data_path(void)
+void phantomdrive_ecdc_disable_data_path(void)
 {
 	R16_ECEC_CTRL &= ~(RB_ECDC_WRSRAM_EN | RB_ECDC_WRPERI_EN |
 	                    RB_ECDC_RDPERI_EN | RB_ECDC_MODE_SEL);
 }
 
 /* ECDC SRAM_LEN is in 128-bit (16-byte) units [CH569DS1 Ch15] */
-void ovrd_crypt_buf(uint8_t *buf, uint32_t sd_lba, uint16_t num_sectors)
+void phantomdrive_crypt_buf(uint8_t *buf, uint32_t sd_lba, uint16_t num_sectors)
 {
 	static uint8_t clog = 0;
 	uint32_t pre = *(volatile uint32_t*)buf;
 
 	uint16_t i;
 	for (i = 0; i < num_sectors; i++) {
-		ovrd_ecdc_set_sector_nonce(sd_lba + i);
+		phantomdrive_ecdc_set_sector_nonce(sd_lba + i);
 		ECDC_Excute(SELFDMA_ENCRY, MODE_LITTLE_ENDIAN);
 		ECDC_SelfDMA((uint32_t)(buf + i * SECTOR_SIZE), SECTOR_SIZE / 16);
 	}
 	/* Disable ECDC so subsequent eMMC DMA isn't double-encrypted */
-	ovrd_ecdc_disable_data_path();
+	phantomdrive_ecdc_disable_data_path();
 
 #ifdef DEBUG_USB
 	if (clog < 5) {
