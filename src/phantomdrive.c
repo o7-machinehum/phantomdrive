@@ -26,7 +26,7 @@ void phantomdrive_init(void)
 	log_printf("phantomdrive: locked, %lu sectors\r\n", LOCKED_SECTORS);
 }
 
-static void phantomdrive_do_unlock(void)
+static void phantomdrive_unlock(void)
 {
 	log_printf("phantomdrive: deriving key (%u bytes)...\r\n", (unsigned)pending_pw_len);
 
@@ -120,7 +120,7 @@ void phantomdrive_poll(void)
 	if (!phantomdrive_unlock_pending)
 		return;
 	phantomdrive_unlock_pending = 0;
-	phantomdrive_do_unlock();
+	phantomdrive_unlock();
 }
 
 void phantomdrive_ecdc_set_sector_nonce(uint32_t sd_lba)
