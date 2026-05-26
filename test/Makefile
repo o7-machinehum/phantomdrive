@@ -5,7 +5,7 @@ LDLIBS = -lcrypto -lssl
 sha256_test: sha256_test.o crypto.o
 	$(CC) $^ $(LDLIBS) -o $@
 
-kdf_test: kdf.o crypto.o
+kdf: kdf.o crypto.o
 	$(CC) $^ $(LDLIBS) -o $@
 
 sha256_test.o: sha256_test.c
@@ -18,8 +18,4 @@ crypto.o: ../src/crypto.c
 	$(CC) $(CFLAGS) -c $< -o $@
 
 clean:
-	rm -f sha256_test kdf_test *.o
-
-all: sha256_test kdf_test
-	./sha256_test
-	./kdf_test
+	rm -f sha256_test kdf kdf_test *.o
