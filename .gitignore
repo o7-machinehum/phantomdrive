@@ -7,3 +7,5 @@ media/
 .history
 *.o
 *.lck
+kdf
+unencrypted.blob
