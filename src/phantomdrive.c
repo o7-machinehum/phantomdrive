@@ -11,12 +11,59 @@ volatile uint8_t phantomdrive_state = STATE_LOCKED;
 static bool phantomdrive_unlock_pending = false;
 
 __attribute__((aligned(16))) uint32_t aes_key[8] __attribute__((section(".DMADATA")));
+static __attribute__((aligned(16))) uint8_t ecdc_test_buf[16] __attribute__((section(".DMADATA")));
 
 static uint8_t pending_pw[128];
 static size_t pending_pw_len;
 static bool pw_partial;
 
 static uint8_t salt_bytes[KDF_SALT_SIZE] = {0};
+
+/* Returns true if ECDC hardware passes the self-test, false otherwise. */
+static bool ecdc_selftest(void)
+{
+	uint32_t ctr[4] = {0, 0x12345678, 0, 0};
+	bool pass = true;
+
+	memset(ecdc_test_buf, 0, 16);
+	uint32_t before = *(uint32_t*)ecdc_test_buf;
+
+	ECDC_SetCount((puint32_t)ctr);
+	ECDC_Excute(SELFDMA_ENCRY, MODE_LITTLE_ENDIAN);
+	ECDC_SelfDMA((uint32_t)ecdc_test_buf, 1);
+	uint32_t after_enc = *(uint32_t*)ecdc_test_buf;
+
+	ECDC_SetCount((puint32_t)ctr);
+	ECDC_Excute(SELFDMA_ENCRY, MODE_LITTLE_ENDIAN);
+	ECDC_SelfDMA((uint32_t)ecdc_test_buf, 1);
+	uint32_t after_dec = *(uint32_t*)ecdc_test_buf;
+
+	bool test1_pass = (after_enc != 0 && after_dec == 0);
+	log_printf("phantomdrive: ECDC CTR: before=%08lx enc=%08lx dec=%08lx %s\r\n",
+	           before, after_enc, after_dec, test1_pass ? "PASS" : "FAIL");
+	if (!test1_pass)
+		pass = false;
+
+	memset(ecdc_test_buf, 0, 16);
+	ECDC_SetCount((puint32_t)ctr);
+	ECDC_Excute(SELFDMA_ENCRY, MODE_LITTLE_ENDIAN);
+	ECDC_SelfDMA((uint32_t)ecdc_test_buf, 1);
+	uint32_t enc2 = *(uint32_t*)ecdc_test_buf;
+
+	ECDC_SetCount((puint32_t)ctr);
+	ECDC_Excute(SELFDMA_DECRY, MODE_LITTLE_ENDIAN);
+	ECDC_SelfDMA((uint32_t)ecdc_test_buf, 1);
+	uint32_t dec2 = *(uint32_t*)ecdc_test_buf;
+
+	bool test2_pass = (dec2 == 0);
+	log_printf("phantomdrive: ECDC DECRY: enc=%08lx dec=%08lx %s\r\n",
+	           enc2, dec2, test2_pass ? "PASS" : "FAIL");
+	if (!test2_pass)
+		pass = false;
+
+	return pass;
+}
+
 void phantomdrive_init(uint64_t unique_id)
 {
 	for (size_t i = 0; i < KDF_SALT_SIZE; i++) {
@@ -64,6 +111,13 @@ static void phantomdrive_unlock(void)
 	uint32_t initial_ctr[4] = {0, 0, 0, 0};
 	ECDC_Init(MODE_AES_CTR, ECDCCLK_240MHZ, KEYLENGTH_256BIT,
 	          (puint32_t)aes_key, (puint32_t)initial_ctr);
+
+	if (!ecdc_selftest()) {
+		log_printf("phantomdrive: ECDC SELFTEST FAILED - refusing unlock\r\n");
+		memset(aes_key, 0, sizeof(aes_key));
+		R16_ECEC_CTRL = 0;
+		return;
+	}
 
 	g_bot.capacity = TF_EMMCParam.EMMCSecNum - LOCKED_SECTORS;
 	phantomdrive_state = STATE_UNLOCKED;
