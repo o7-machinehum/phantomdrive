@@ -33,7 +33,7 @@
  * SPDX-License-Identifier: Apache-2.0
  *******************************************************************************/
 #include "sd.h"
-#include "CH56x_debug_log.h"
+#include "debug.h"
 #include <string.h>
 
 /* Scratch buffer for SCR register read (8 bytes needed, 512 allocated for

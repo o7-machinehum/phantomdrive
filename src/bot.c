@@ -13,7 +13,7 @@
 #include "msc_write.h"
 #include "phantomdrive.h"
 #include "CH56x_usb20_devbulk.h"
-#include "CH56x_debug_log.h"
+#include "debug.h"
 #include <string.h>
 
 void bot_set_sense(uint8_t key, uint8_t asc, uint8_t status)

@@ -5,7 +5,7 @@
 #define MSC_DIAG_H_
 
 #include "bot_state.h"
-#include "CH56x_debug_log.h"
+#include "debug.h"
 
 typedef struct {
     uint32_t start_lba;

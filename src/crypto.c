@@ -162,20 +162,18 @@ void sha256(const uint8_t *data, size_t len, uint8_t hash_out[32])
 
 /*****************************************************************************
  * KDF: Iterated SHA-256 key derivation
- * key = SHA256(salt || password), then 1000x key = SHA256(key || password)
+ * key = SHA256(salt || password), then 100000x key = SHA256(key || password)
  *****************************************************************************/
-
-static const uint8_t kdf_salt[16] = "OVRDrive-v2-salt";
 #define KDF_ROUNDS 100000
 
-void derive_key(const uint8_t *password, size_t pw_len, uint8_t key_out[32])
+void derive_key(const uint8_t *password, size_t pw_len, uint8_t kdf_salt[KDF_SALT_SIZE], uint8_t key_out[32])
 {
 	sha256_ctx_t ctx;
 	int i;
 
 	/* Round 0: key = SHA256(salt || password) */
 	sha256_init(&ctx);
-	sha256_update(&ctx, kdf_salt, sizeof(kdf_salt));
+	sha256_update(&ctx, kdf_salt, KDF_SALT_SIZE);
 	sha256_update(&ctx, password, pw_len);
 	sha256_final(&ctx, key_out);
 

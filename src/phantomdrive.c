@@ -2,7 +2,7 @@
 #include "crypto.h"
 #include "bot_state.h"
 #include "CH56x_ecdc.h"
-#include "CH56x_debug_log.h"
+#include "debug.h"
 #include "CH56x_usb20_devbulk.h"
 #include <stdbool.h>
 #include <string.h>
@@ -16,8 +16,20 @@ static uint8_t pending_pw[128];
 static size_t pending_pw_len;
 static bool pw_partial;
 
-void phantomdrive_init(void)
+static uint8_t salt_bytes[KDF_SALT_SIZE] = {0};
+void phantomdrive_init(uint64_t unique_id)
 {
+	for (size_t i = 0; i < KDF_SALT_SIZE; i++) {
+		salt_bytes[i] = (uint8_t)(unique_id >> (8 * i));
+	}
+
+	log_printf("Salt:");
+	for (size_t i = 0; i < KDF_SALT_SIZE; i++) {
+		cprintf("%02x", salt_bytes[i]);
+	}
+	cprintf("\r\n");
+
+
 	R16_ECEC_CTRL = 0;
 	R8_ECDC_INT_FG = 0xFF;
 
@@ -31,7 +43,19 @@ static void phantomdrive_unlock(void)
 	log_printf("phantomdrive: deriving key (%u bytes)...\r\n", (unsigned)pending_pw_len);
 
 	uint8_t key_bytes[32];
-	derive_key(pending_pw, pending_pw_len, key_bytes);
+
+	// We make a custom salt per-device
+	derive_key(pending_pw, pending_pw_len, salt_bytes, key_bytes);
+
+	/* Only for verification/testing purposes
+	#ifdef DEBUG
+  	log_printf("Key:");
+  	for (size_t i = 0; i < sizeof(key_bytes); i++)
+  	    cprintf("%02x", key_bytes[i]);
+  	cprintf("\r\n");
+  	#endif
+	*/
+
 	memcpy(aes_key, key_bytes, 32);
 	memset(key_bytes, 0, sizeof(key_bytes));
 	memset(pending_pw, 0, sizeof(pending_pw));

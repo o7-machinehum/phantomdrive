@@ -7,7 +7,7 @@
 
 #include "CH56x_common.h"
 #include "CH56x_bsp.h"
-#include "CH56x_debug_log.h"
+#include "debug.h"
 #include "CH56x_emmc.h"
 #include <string.h>
 

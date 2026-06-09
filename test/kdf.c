@@ -133,19 +133,15 @@ void decrypt(const char* blob, uint8_t key[32]) {
 }
 
 int main(int argc, char *argv[]) {
-	// ad56a659e353bee798b7c769ff037ad1c1d0f153ccaf87a48af45a1e82637de0
+	// Our key, with the password "pineapple" and our salt below
+	// Key: db11b4740698db1b68f762e1994ce921b1761373948ca909eb281a3cd2670d6a
+	// 00s 008ms 376us Salt:34fc1fa7145467f7
     const uint8_t password[] = "pineapple";
+	uint8_t salt[KDF_SALT_SIZE] = {0x34, 0xfc, 0x1f, 0xa7, 0x14, 0x54, 0x67, 0xf7};
 	uint8_t key_bytes[KEY_SIZE];
 
-	if(argc < 2) {
-		printf("Please point to block device ie: ./kdf /dev/sdX\n");
-		return 1;
-	} else {
-		printf("Using block device: %s \n", argv[1]);
-	}
-
 	// Function from the firwmare
-	derive_key(password, strlen((const char *)password), key_bytes);
+	derive_key(password, strlen((const char *)password), salt, key_bytes);
 
 	printf("Key: ");
 	for(int i = 0; i < KEY_SIZE ; i++) {
@@ -153,6 +149,13 @@ int main(int argc, char *argv[]) {
 	};
 
 	printf("\n");
+
+	if(argc < 2) {
+		printf("Please point to block device ie: ./kdf /dev/sdX\n");
+		return 1;
+	} else {
+		printf("Using block device: %s \n", argv[1]);
+	}
 
 	// First we use the kdf to generate our key
 	// Then we use this key to AES decrypt out disk

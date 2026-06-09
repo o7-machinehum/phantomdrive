@@ -2,7 +2,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 #include "CH56x_common.h"
-#include "CH56x_debug_log.h"
+#include "debug.h"
 
 #include "CH56x_usb20_devbulk.h"
 #include "CH56x_usb_devbulk_desc_cmd.h"
@@ -10,6 +10,7 @@
 #include "bot.h"
 #include "sd.h"
 #include "phantomdrive.h"
+#include "crypto.h"
 
 #undef FREQ_SYS
 #define FREQ_SYS (120000000)
@@ -29,6 +30,7 @@ usb_descriptor_usb_vid_pid_t vid_pid =
 	.pid = { .id_16b = 0x05DC }
 };
 
+
 /* Init: GPIO/BSP -> UART -> USB -> SD -> main loop (bot_poll) */
 int main()
 {
@@ -39,6 +41,7 @@ int main()
 #if(defined DEBUG)
 	UART1_init(UART1_BAUD, FREQ_SYS);
 #endif
+	cprintf("\n\r");
 	log_printf("Phantomdrive, ChipID(Hex)=%02X\r\n", SYS_GetChipID());
 
 	memset(&unique_id, 0, 8);
@@ -48,6 +51,7 @@ int main()
 
 	R32_USB_CONTROL = 0;
 	usb_descriptor_set_string_serial_number(&unique_id);
+
 	usb_descriptor_set_usb_vid_pid(&vid_pid);
 	PFIC_EnableIRQ(USBHS_IRQn);
 	USB20_Device_Init(ENABLE);
@@ -65,11 +69,12 @@ int main()
 		log_printf("SD OK: %d sectors (%d MB)\r\n",
 			TF_EMMCParam.EMMCSecNum,
 			TF_EMMCParam.EMMCSecNum / 2048);
-		phantomdrive_init();
+		phantomdrive_init(unique_id.sn_64b);
 	}
 	else
 	{
 		log_printf("SD init FAILED (sta=%d)\r\n", sta);
+		while(1) {} // Something's wrong, sit here forever
 	}
 
 	log_printf("MSC ready\r\n");

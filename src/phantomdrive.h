@@ -11,7 +11,7 @@
 extern volatile uint8_t phantomdrive_state;
 extern uint32_t aes_key[8] __attribute__((section(".DMADATA")));
 
-void phantomdrive_init(void);
+void phantomdrive_init(uint64_t unique_id);
 void phantomdrive_snoop_write(uint8_t *buf, uint32_t len);
 void phantomdrive_poll(void);
 void phantomdrive_crypt_buf(uint8_t *buf, uint32_t sd_lba, uint16_t num_sectors);
