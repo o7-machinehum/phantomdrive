@@ -7,11 +7,10 @@
 uint8_t g_inquiry_response[] =
 {
     0x00, 0x80, 0x02, 0x02, 0x1F, 0x00, 0x00, 0x00,
-    'H', 'y', 'd', 'r', 'a', 'U', 'S', 'B',   /* Vendor */
-    'U', 'S', 'B', '3', ' ', 'M', 'S', 'C',   /* Product */
-    ' ', ' ', ' ', ' ',
-    'D', 'i', 's', 'k',                         /* Revision */
-    ' ', 'W', 'C', 'H'
+    'R', 'K', 'l', 'a', 'b', 's', ' ', ' ',   /* Vendor: 8 bytes */
+    'P', 'h', 'a', 'n', 't', 'o', 'm', 'd',   /* Product: 16 bytes */
+    'r', 'i', 'v', 'e', ' ', ' ', ' ', ' ',
+    '1', '.', '0', ' '                        /* Revision: 4 bytes */
 };
 
 /* Bytes 4-7 overridden at runtime with actual capacity */

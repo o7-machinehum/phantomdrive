@@ -163,7 +163,22 @@ void phantomdrive_ecdc_disable_data_path(void)
 	                    RB_ECDC_RDPERI_EN | RB_ECDC_MODE_SEL);
 }
 
-/* ECDC SRAM_LEN is in 128-bit (16-byte) units [CH569DS1 Ch15] */
+/*
+            LBA 0                  LBA 1                  LBA 2
+     +----------------+     +----------------+     +----------------+
+     | 512 bytes      |     | 512 bytes      |     | 512 bytes      |
+     | 32 AES blocks  |     | 32 AES blocks  |     | 32 AES blocks  |
+     +----------------+     +----------------+     +----------------+
+
+     LBA 0
+     +---------+---------+---------+-----+----------+
+     | ctr 0   | ctr 1   | ctr 2   | ... | ctr 31   |
+     +---------+---------+---------+-----+----------+
+
+	 - nonce = (sd_lba + ctr)
+	 - ctr is added in hardware. The start is loaded with phantomdrive_ecdc_set_sector_nonce()
+*/
+
 void phantomdrive_crypt_buf(uint8_t *buf, uint32_t sd_lba, uint16_t num_sectors)
 {
 	static uint8_t clog = 0;

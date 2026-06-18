@@ -26,8 +26,8 @@ usb_descriptor_serial_number_t unique_id;
 
 usb_descriptor_usb_vid_pid_t vid_pid =
 {
-	.vid = { .id_16b = 0x16C0 },
-	.pid = { .id_16b = 0x05DC }
+	.vid = { .id_16b = 0x1209 },
+	.pid = { .id_16b = 0x2833 }
 };
 
 
@@ -47,7 +47,7 @@ int main()
 	memset(&unique_id, 0, 8);
 	FLASH_ROMA_READ(FLASH_ROMA_UID_ADDR, (uint32_t*)&unique_id, 8);
 
-	log_printf("Phantomdrive FW v0.1 (CPr Freq=%d MHz)\r\n", (FREQ_SYS/1000000));
+	log_printf("Phantomdrive FW v1.0 (CPr Freq=%d MHz)\r\n", (FREQ_SYS/1000000));
 
 	R32_USB_CONTROL = 0;
 	usb_descriptor_set_string_serial_number(&unique_id);
