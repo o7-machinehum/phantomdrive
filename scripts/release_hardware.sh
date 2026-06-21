@@ -1,6 +1,6 @@
 #!/bin/bash
 
-VER="r0.1"
+VER="r1.0"
 PRJ="ovrdrive"
 PRJDIR="ee/ovrdrive/"
 
