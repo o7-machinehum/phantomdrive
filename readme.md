@@ -57,3 +57,11 @@ sudo echo "password:YourPasswordHere13245" > /mnt/unlock.txt
 ``` bash
 ./scripts/release_hardware.sh
 ```
+
+# Security Notes
+
+This code has not been professionally audited. Treat Phantomdrive as an experimental open source hardware/firmware project rather than a formally reviewed security product. The current level of validation is described in the [test README](test/readme.md). I am not responsible for loss of data, security incidents, or other damage resulting from use of this project.
+
+The encrypted area currently uses AES-256-CTR with counters derived from disk block positions. This matters if an attacker can capture ciphertext from the same sector at two different points in time after that sector has been rewritten. Comparing those ciphertexts cancels the repeated keystream and reveals the XOR of the two plaintext versions for that sector only; it does not recover the AES key. Recovering actual plaintext bytes still requires known or guessable content in one of the versions. Disk encryption modes such as XTS are designed for this class of problem; AES-XTS support is in progress.
+
+Unlock detection is also content-based. While the device is locked, any write data containing the string `password:` can be interpreted as an unlock attempt; the file does not need to be named `unlock.txt`.
