@@ -18,6 +18,19 @@ static size_t pending_pw_len;
 static bool pw_partial;
 
 static uint8_t salt_bytes[KDF_SALT_SIZE] = {0};
+
+static bool is_password_terminator(uint8_t c)
+{
+	return c == '\n' || c == '\r' || c == '\0';
+}
+
+static void clear_pending_password(void)
+{
+	memset(pending_pw, 0, sizeof(pending_pw));
+	pending_pw_len = 0;
+	pw_partial = false;
+}
+
 void phantomdrive_init(uint64_t unique_id)
 {
 	for (size_t i = 0; i < KDF_SALT_SIZE; i++) {
@@ -98,36 +111,50 @@ void phantomdrive_unlock(void)
 	phantomdrive_clear_unlock_pending();
 }
 
-
-
-void phantomdrive_snoop_write(uint8_t *buf, uint32_t len)
+static void finish_password_snoop(size_t pw_len)
 {
-	/* Continue appending password from previous buffer */
-	if (pw_partial) {
-		size_t end = 0;
-		while (end < len && pending_pw_len < sizeof(pending_pw)) {
-			uint8_t c = buf[end];
-
-			if (c == '\n' || c == '\r' || c == '\0')
-				break;
-
-			pending_pw[pending_pw_len++] = c;
-			end++;
-		}
-
-		memset(buf, 0, end);
-
-		if (end < len || pending_pw_len >= sizeof(pending_pw)) {
-			pw_partial = false;
-			if (pending_pw_len > 0) {
-				phantomdrive_set_unlock_pending();
-				log_printf("phantomdrive: password snooped (%u bytes)\r\n",
-				           (unsigned)pending_pw_len);
-			}
-		}
+	if (pw_len == 0) {
+		clear_pending_password();
 		return;
 	}
 
+	phantomdrive_set_unlock_pending();
+	log_printf("phantomdrive: password snooped (%u bytes)\r\n",
+	           (unsigned)pw_len);
+}
+
+static void continue_partial_password(uint8_t *buf, uint32_t len)
+{
+	size_t end = 0;
+	bool saw_terminator = false;
+
+	while (end < len) {
+		uint8_t c = buf[end];
+
+		if (is_password_terminator(c)) {
+			saw_terminator = true;
+			break;
+		}
+		if (pending_pw_len >= sizeof(pending_pw))
+			break;
+
+		pending_pw[pending_pw_len++] = c;
+		end++;
+	}
+
+	memset(buf, 0, end);
+
+	if (saw_terminator) {
+		pw_partial = false;
+		finish_password_snoop(pending_pw_len);
+	} else if (pending_pw_len >= sizeof(pending_pw)) {
+		// We've used up our entire buffer, password too long
+		clear_pending_password();
+	}
+}
+
+static void snoop_new_password(uint8_t *buf, uint32_t len)
+{
 	const char *prefix = "password:";
 	const size_t prefix_len = 9;
 	uint32_t i;
@@ -140,10 +167,16 @@ void phantomdrive_snoop_write(uint8_t *buf, uint32_t len)
 
 		size_t pw_start = i + prefix_len;
 		size_t pw_end = pw_start;
-		while (pw_end < len && (pw_end - pw_start) < sizeof(pending_pw)) {
+		bool saw_terminator = false;
+
+		while (pw_end < len) {
 			uint8_t c = buf[pw_end];
 
-			if (c == '\n' || c == '\r' || c == '\0')
+			if (is_password_terminator(c)) {
+				saw_terminator = true;
+				break;
+			}
+			if ((pw_end - pw_start) >= sizeof(pending_pw))
 				break;
 
 			pw_end++;
@@ -154,17 +187,26 @@ void phantomdrive_snoop_write(uint8_t *buf, uint32_t len)
 		pending_pw_len = pw_len;
 		memset(buf + i, 0, pw_end - i);
 
-		if (pw_end < len || pw_len >= sizeof(pending_pw)) {
-			if (pw_len > 0) {
-				phantomdrive_set_unlock_pending();
-				log_printf("phantomdrive: password snooped (%u bytes)\r\n",
-				           (unsigned)pw_len);
-			}
+		if (saw_terminator) {
+			finish_password_snoop(pw_len);
+		} else if (pw_len >= sizeof(pending_pw)) {
+			// We've used up our entire buffer, password too long
+			clear_pending_password();
 		} else {
 			pw_partial = true;
 		}
 		return;
 	}
+}
+
+void phantomdrive_snoop_write(uint8_t *buf, uint32_t len)
+{
+	if (pw_partial) {
+		continue_partial_password(buf, len);
+		return;
+	}
+
+	snoop_new_password(buf, len);
 }
 
 void phantomdrive_ecdc_set_sector_nonce(uint32_t sd_lba)
