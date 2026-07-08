@@ -213,7 +213,11 @@ static uint8_t write_received_chunk(uint8_t *buf, uint32_t lba, uint16_t chunk_s
     uint32_t prof_start = write_profile_now();
 
     write_profile_count_chunk();
-    phantomdrive_snoop_write(buf, (uint32_t)chunk_sectors * SECTOR_SIZE);
+
+    if(phantomdrive_is_locked() && !phantomdrive_get_unlock_pending()) {
+        phantomdrive_snoop_write(buf, (uint32_t)chunk_sectors * SECTOR_SIZE);
+    }
+
     write_profile_add_snoop(prof_start);
     if (phantomdrive_state == STATE_UNLOCKED) {
         prof_start = write_profile_now();
