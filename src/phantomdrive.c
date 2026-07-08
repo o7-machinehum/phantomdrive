@@ -105,9 +105,15 @@ void phantomdrive_snoop_write(uint8_t *buf, uint32_t len)
 	/* Continue appending password from previous buffer */
 	if (pw_partial) {
 		size_t end = 0;
-		while (end < len && pending_pw_len < sizeof(pending_pw) &&
-		       buf[end] != '\n' && buf[end] != '\r' && buf[end] != '\0')
-			pending_pw[pending_pw_len++] = buf[end++];
+		while (end < len && pending_pw_len < sizeof(pending_pw)) {
+			uint8_t c = buf[end];
+
+			if (c == '\n' || c == '\r' || c == '\0')
+				break;
+
+			pending_pw[pending_pw_len++] = c;
+			end++;
+		}
 
 		memset(buf, 0, end);
 
@@ -134,9 +140,14 @@ void phantomdrive_snoop_write(uint8_t *buf, uint32_t len)
 
 		size_t pw_start = i + prefix_len;
 		size_t pw_end = pw_start;
-		while (pw_end < len && (pw_end - pw_start) < sizeof(pending_pw) &&
-		       buf[pw_end] != '\n' && buf[pw_end] != '\r' && buf[pw_end] != '\0')
+		while (pw_end < len && (pw_end - pw_start) < sizeof(pending_pw)) {
+			uint8_t c = buf[pw_end];
+
+			if (c == '\n' || c == '\r' || c == '\0')
+				break;
+
 			pw_end++;
+		}
 
 		size_t pw_len = pw_end - pw_start;
 		memcpy(pending_pw, buf + pw_start, pw_len);
