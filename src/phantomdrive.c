@@ -8,9 +8,10 @@
 #include <string.h>
 
 volatile uint8_t phantomdrive_state = STATE_LOCKED;
-static bool phantomdrive_unlock_pending = false;
 
 __attribute__((aligned(16))) uint32_t aes_key[8] __attribute__((section(".DMADATA")));
+
+static bool phantomdrive_unlock_pending = false;
 
 static uint8_t pending_pw[128];
 static size_t pending_pw_len;
@@ -38,7 +39,23 @@ void phantomdrive_init(uint64_t unique_id)
 	log_printf("phantomdrive: locked, %lu sectors\r\n", LOCKED_SECTORS);
 }
 
-static void phantomdrive_unlock(void)
+void phantomdrive_set_unlock_pending(void) {
+	phantomdrive_unlock_pending = true;
+}
+
+void phantomdrive_clear_unlock_pending(void) {
+	phantomdrive_unlock_pending = false;
+}
+
+bool phantomdrive_get_unlock_pending(void) {
+	return phantomdrive_unlock_pending;
+}
+
+bool phantomdrive_is_locked(void) {
+	return phantomdrive_state == STATE_LOCKED;
+}
+
+void phantomdrive_unlock(void)
 {
 	log_printf("phantomdrive: deriving key (%u bytes)...\r\n", (unsigned)pending_pw_len);
 
@@ -78,13 +95,13 @@ static void phantomdrive_unlock(void)
 	USB20_Device_Init(ENABLE);
 
 	log_printf("phantomdrive: re-enumerated\r\n");
+	phantomdrive_clear_unlock_pending();
 }
+
+
 
 void phantomdrive_snoop_write(uint8_t *buf, uint32_t len)
 {
-	if (phantomdrive_state != STATE_LOCKED || phantomdrive_unlock_pending)
-		return;
-
 	/* Continue appending password from previous buffer */
 	if (pw_partial) {
 		size_t end = 0;
@@ -97,7 +114,7 @@ void phantomdrive_snoop_write(uint8_t *buf, uint32_t len)
 		if (end < len || pending_pw_len >= sizeof(pending_pw)) {
 			pw_partial = false;
 			if (pending_pw_len > 0) {
-				phantomdrive_unlock_pending = true;
+				phantomdrive_set_unlock_pending();
 				log_printf("phantomdrive: password snooped (%u bytes)\r\n",
 				           (unsigned)pending_pw_len);
 			}
@@ -128,7 +145,7 @@ void phantomdrive_snoop_write(uint8_t *buf, uint32_t len)
 
 		if (pw_end < len || pw_len >= sizeof(pending_pw)) {
 			if (pw_len > 0) {
-				phantomdrive_unlock_pending = true;
+				phantomdrive_set_unlock_pending();
 				log_printf("phantomdrive: password snooped (%u bytes)\r\n",
 				           (unsigned)pw_len);
 			}
@@ -137,14 +154,6 @@ void phantomdrive_snoop_write(uint8_t *buf, uint32_t len)
 		}
 		return;
 	}
-}
-
-void phantomdrive_poll(void)
-{
-	if (!phantomdrive_unlock_pending)
-		return;
-	phantomdrive_unlock_pending = false;
-	phantomdrive_unlock();
 }
 
 void phantomdrive_ecdc_set_sector_nonce(uint32_t sd_lba)

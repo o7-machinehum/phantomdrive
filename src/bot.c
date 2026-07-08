@@ -339,5 +339,8 @@ void bot_poll(void)
         R8_UEP1_RX_CTRL = (R8_UEP1_RX_CTRL & ~RB_UEP_RRES_MASK) | UEP_R_RES_ACK;
     }
 
-    phantomdrive_poll();
+    // If we want to unlock
+    if(phantomdrive_get_unlock_pending()) {
+        phantomdrive_unlock();
+    }
 }
