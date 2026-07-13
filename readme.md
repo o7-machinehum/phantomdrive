@@ -1,6 +1,6 @@
 ![](img/Logo_white_big.png)
 
-Phantomdrive is open source encrypted USB drive with a stealth mechanism to hide its second partition. To decrypt it you must create a file containing your password in the format `password:addpasswordhere`, this is used to derive a AES-256 key. The drive automatically unmounts itself, remounts the remaining disk and encrypts and decrypts in place. It uses CH569W SoC, which has USB3, SDIO and an AES hardware block. It is programmable over USB using the `wch-ch56x-isp` library.
+Phantomdrive is open source encrypted USB drive with a stealth mechanism to hide its second partition. To decrypt it you must create a file containing your password in the format `password:addpasswordhere`, this is used to derive AES-XTS keys. The drive automatically unmounts itself, remounts the remaining disk and encrypts and decrypts in place. It uses CH569W SoC, which has USB3, SDIO and an AES hardware block. It is programmable over USB using the `wch-ch56x-isp` library.
 
 ``` bash
 |-- ee             # Hardware files
@@ -62,6 +62,6 @@ sudo echo "password:YourPasswordHere13245" > /mnt/unlock.txt
 
 This code has not been professionally audited. Treat Phantomdrive as an experimental open source hardware/firmware project rather than a formally reviewed security product. The current level of validation is described in the [test README](test/readme.md). I am not responsible for loss of data, security incidents, or other damage resulting from use of this project.
 
-The encrypted area currently uses AES-256-CTR with counters derived from disk block positions. This matters if an attacker can capture ciphertext from the same sector at two different points in time after that sector has been rewritten. Comparing those ciphertexts cancels the repeated keystream and reveals the XOR of the two plaintext versions for that sector only; it does not recover the AES key. Recovering actual plaintext bytes still requires known or guessable content in one of the versions. Disk encryption modes such as XTS are designed for this class of problem; AES-XTS support is in progress.
+The encrypted area currently uses AES-256-XTS. This is an on-disk format change from the previous AES-CTR implementation, so data written by older firmware will not decrypt correctly without migration or reformatting.
 
 Unlock detection is also content-based. While the device is locked, any write data containing the string `password:` can be interpreted as an unlock attempt; the file does not need to be named `unlock.txt`.

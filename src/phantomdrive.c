@@ -1,5 +1,5 @@
 #include "phantomdrive.h"
-#include "crypto.h"
+#include "phantomdrive_crypto.h"
 #include "bot_state.h"
 #include "CH56x_ecdc.h"
 #include "debug.h"
@@ -8,8 +8,6 @@
 #include <string.h>
 
 static volatile uint8_t phantomdrive_state = STATE_LOCKED;
-
-__attribute__((aligned(16))) uint32_t aes_key[8] __attribute__((section(".DMADATA")));
 
 static bool phantomdrive_unlock_pending = false;
 
@@ -72,30 +70,10 @@ bool phantomdrive_is_locked(void) {
 
 void phantomdrive_unlock(void)
 {
-	log_printf("phantomdrive: deriving key (%u bytes)...\r\n", (unsigned)pending_pw_len);
-
-	uint8_t key_bytes[32];
-
 	// We make a custom salt per-device
-	derive_key(pending_pw, pending_pw_len, salt_bytes, key_bytes);
-
-	/* Only for verification/testing purposes
-	#ifdef DEBUG
-  	log_printf("Key:");
-  	for (size_t i = 0; i < sizeof(key_bytes); i++)
-  	    cprintf("%02x", key_bytes[i]);
-  	cprintf("\r\n");
-  	#endif
-	*/
-
-	memcpy(aes_key, key_bytes, 32);
-	memset(key_bytes, 0, sizeof(key_bytes));
+	phantomdrive_crypto_unlock(pending_pw, pending_pw_len, salt_bytes);
 	memset(pending_pw, 0, sizeof(pending_pw));
 	pending_pw_len = 0;
-
-	uint32_t initial_ctr[4] = {0, 0, 0, 0};
-	ECDC_Init(MODE_AES_CTR, ECDCCLK_240MHZ, KEYLENGTH_256BIT,
-	          (puint32_t)aes_key, (puint32_t)initial_ctr);
 
 	g_bot.capacity = TF_EMMCParam.EMMCSecNum - LOCKED_SECTORS;
 	phantomdrive_state = STATE_UNLOCKED;
@@ -225,58 +203,8 @@ void phantomdrive_snoop_write(uint8_t *buf, uint32_t len)
 	snoop_new_password(buf, len);
 }
 
-void phantomdrive_ecdc_set_sector_nonce(uint32_t sd_lba)
-{
-	uint32_t ctr[4];
-	ctr[0] = 0;
-	ctr[1] = sd_lba;
-	ctr[2] = 0;
-	ctr[3] = 0;
-	ECDC_SetCount((puint32_t)ctr);
-}
-
 void phantomdrive_ecdc_disable_data_path(void)
 {
 	R16_ECEC_CTRL &= ~(RB_ECDC_WRSRAM_EN | RB_ECDC_WRPERI_EN |
 	                    RB_ECDC_RDPERI_EN | RB_ECDC_MODE_SEL);
-}
-
-/*
-            LBA 0                  LBA 1                  LBA 2
-     +----------------+     +----------------+     +----------------+
-     | 512 bytes      |     | 512 bytes      |     | 512 bytes      |
-     | 32 AES blocks  |     | 32 AES blocks  |     | 32 AES blocks  |
-     +----------------+     +----------------+     +----------------+
-
-     LBA 0
-     +---------+---------+---------+-----+----------+
-     | ctr 0   | ctr 1   | ctr 2   | ... | ctr 31   |
-     +---------+---------+---------+-----+----------+
-
-	 - nonce = (sd_lba + ctr)
-	 - ctr is added in hardware. The start is loaded with phantomdrive_ecdc_set_sector_nonce()
-*/
-
-void phantomdrive_crypt_buf(uint8_t *buf, uint32_t sd_lba, uint16_t num_sectors)
-{
-	static uint8_t clog = 0;
-	uint32_t pre = *(volatile uint32_t*)buf;
-
-	uint16_t i;
-	for (i = 0; i < num_sectors; i++) {
-		phantomdrive_ecdc_set_sector_nonce(sd_lba + i);
-		ECDC_Excute(SELFDMA_ENCRY, MODE_LITTLE_ENDIAN);
-		ECDC_SelfDMA((uint32_t)(buf + i * SECTOR_SIZE), SECTOR_SIZE / 16);
-	}
-	/* Disable ECDC so subsequent eMMC DMA isn't double-encrypted */
-	phantomdrive_ecdc_disable_data_path();
-
-#ifdef DEBUG_USB
-	if (clog < 5) {
-		uint32_t post = *(volatile uint32_t*)buf;
-		log_printf("C lba=%lu n=%u %08lx->%08lx ctrl=%04x\r\n",
-		           sd_lba, num_sectors, pre, post, R16_ECEC_CTRL);
-		clog++;
-	}
-#endif
 }

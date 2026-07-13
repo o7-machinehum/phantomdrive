@@ -137,7 +137,7 @@ static void read_stream_usb2(uint32_t actual_lba, uint16_t preqnum)
             uint8_t *completed_sector = read_ring_slot(completed_slot);
 
             if (decrypt)
-                phantomdrive_crypt_buf(completed_sector, actual_lba + pipe.emmc_done, 1);
+                phantomdrive_decrypt_buf(completed_sector, actual_lba + pipe.emmc_done, 1);
 
             diag_check_sd_sector(&diag, completed_sector, pipe.emmc_done);
 
@@ -156,7 +156,7 @@ static void read_stream_usb2(uint32_t actual_lba, uint16_t preqnum)
             uint8_t *completed_sector = read_ring_slot(completed_slot);
 
             if (decrypt)
-                phantomdrive_crypt_buf(completed_sector, actual_lba + pipe.emmc_done, 1);
+                phantomdrive_decrypt_buf(completed_sector, actual_lba + pipe.emmc_done, 1);
 
             diag_check_sd_sector(&diag, completed_sector, pipe.emmc_done);
 

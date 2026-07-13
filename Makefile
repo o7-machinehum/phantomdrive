@@ -13,6 +13,15 @@ endif
 
 # Define option(s) defined in pre-processor compiler option(s)
 DEFINE_OPTS = -DMSC_DEVICE
+AES_MODE ?= XTS
+
+ifeq ($(AES_MODE),CTR)
+AES_SRCS = $(USER_DIR)/phantomdrive_aes_ctr.c
+else ifeq ($(AES_MODE),XTS)
+AES_SRCS = $(USER_DIR)/phantomdrive_aes_xts.c
+else
+$(error AES_MODE must be CTR or XTS)
+endif
 
 # Add UART debugging.
 ifeq ($(UART),1)
@@ -30,7 +39,7 @@ OPTIM_OPTS = -O3
 #DEBUG = -g
 DEBUG =
 
-BUILD_DIR = ./build
+BUILD_DIR = ./build/$(AES_MODE)
 
 PROJECT = $(BUILD_DIR)/Phantomdrive_MSC
 
@@ -53,7 +62,8 @@ USB_SRCS  = \
 OBJS        += $(patsubst $(USB_DIR)/%.c,$(BUILD_DIR)/%.o,$(USB_SRCS))
 
 USER_DIR  = ./src
-USER_SRCS = $(wildcard $(USER_DIR)/*.c)
+USER_AES_SRCS = $(USER_DIR)/phantomdrive_aes_ctr.c $(USER_DIR)/phantomdrive_aes_xts.c
+USER_SRCS = $(filter-out $(USER_AES_SRCS),$(wildcard $(USER_DIR)/*.c)) $(AES_SRCS)
 OBJS     += $(patsubst $(USER_DIR)/%.c,$(BUILD_DIR)/%.o,$(USER_SRCS))
 
 # All of the sources participating in the build are defined here

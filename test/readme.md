@@ -60,3 +60,13 @@ Data LOST: 0.00 Bytes (0 sectors)
 	     Overwritten: 0.00 Bytes (0 sectors)
 Average sequential read speed: 947.09 MB/s (1611032 sectors / 830.5ms)
 ```
+
+### AES-XTS Test
+
+``` bash
+cd test
+make xts_test
+./xts_test
+```
+
+This test derives the Phantomdrive AES-XTS data and tweak keys, encrypts one sector with the project reference transform, and checks it against OpenSSL AES-256-XTS.

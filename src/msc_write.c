@@ -221,7 +221,7 @@ static uint8_t write_received_chunk(uint8_t *buf, uint32_t lba, uint16_t chunk_s
     write_profile_add_snoop(prof_start);
     if (!phantomdrive_is_locked()) {
         prof_start = write_profile_now();
-        phantomdrive_crypt_buf(buf, physical_lba, chunk_sectors);
+        phantomdrive_encrypt_buf(buf, physical_lba, chunk_sectors);
         write_profile_add_crypt(prof_start);
     }
     return write_chunk_to_sd(buf, physical_lba, chunk_sectors);
