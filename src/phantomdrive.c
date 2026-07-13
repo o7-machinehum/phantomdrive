@@ -16,6 +16,7 @@ static bool phantomdrive_unlock_pending = false;
 static uint8_t pending_pw[128];
 static size_t pending_pw_len;
 static bool pw_partial;
+static size_t prefix_match_len;
 
 static uint8_t salt_bytes[KDF_SALT_SIZE] = {0};
 
@@ -29,6 +30,7 @@ static void clear_pending_password(void)
 	memset(pending_pw, 0, sizeof(pending_pw));
 	pending_pw_len = 0;
 	pw_partial = false;
+	prefix_match_len = 0;
 }
 
 void phantomdrive_init(uint64_t unique_id)
@@ -119,6 +121,8 @@ static void finish_password_snoop(size_t pw_len)
 	}
 
 	phantomdrive_set_unlock_pending();
+	pw_partial = false;
+	prefix_match_len = 0;
 	log_printf("phantomdrive: password snooped (%u bytes)\r\n",
 	           (unsigned)pw_len);
 }
@@ -156,18 +160,30 @@ static void continue_partial_password(uint8_t *buf, uint32_t len)
 static void snoop_new_password(uint8_t *buf, uint32_t len)
 {
 	const char *prefix = "password:";
-	const size_t prefix_len = 9;
+	const size_t prefix_len = sizeof("password:") - 1;
+	size_t prefix_start = 0;
 	uint32_t i;
 
-	for (i = 0; i + prefix_len <= len; i++) {
-		if (buf[i] != 'p')
-			continue;
-		if (memcmp(buf + i, prefix, prefix_len) != 0)
-			continue;
+	for (i = 0; i < len; i++) {
+		if (buf[i] == (uint8_t)prefix[prefix_match_len]) {
+			if (prefix_match_len == 0)
+				prefix_start = i;
 
-		size_t pw_start = i + prefix_len;
+			prefix_match_len++;
+
+			if (prefix_match_len < prefix_len)
+				continue;
+		} else {
+			prefix_match_len = (buf[i] == (uint8_t)prefix[0]) ? 1 : 0;
+			prefix_start = i;
+			continue;
+		}
+
+		size_t pw_start = i + 1;
 		size_t pw_end = pw_start;
 		bool saw_terminator = false;
+
+		prefix_match_len = 0;
 
 		while (pw_end < len) {
 			uint8_t c = buf[pw_end];
@@ -185,7 +201,7 @@ static void snoop_new_password(uint8_t *buf, uint32_t len)
 		size_t pw_len = pw_end - pw_start;
 		memcpy(pending_pw, buf + pw_start, pw_len);
 		pending_pw_len = pw_len;
-		memset(buf + i, 0, pw_end - i);
+		memset(buf + prefix_start, 0, pw_end - prefix_start);
 
 		if (saw_terminator) {
 			finish_password_snoop(pw_len);
