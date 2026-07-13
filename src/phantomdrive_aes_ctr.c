@@ -4,7 +4,7 @@
 #include "CH56x_ecdc.h"
 #include "debug.h"
 
-static uint32_t aes_key[8] __attribute__((aligned(16), section(".DMADATA")));
+static uint32_t aes_key[8];
 
 void phantomdrive_crypto_unlock(const uint8_t *password, size_t pw_len,
                                 uint8_t salt[KDF_SALT_SIZE])

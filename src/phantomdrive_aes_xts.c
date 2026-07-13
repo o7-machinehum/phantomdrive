@@ -4,8 +4,8 @@
 #include "CH56x_ecdc.h"
 #include "debug.h"
 
-static uint32_t xts_data_key[8] __attribute__((aligned(16), section(".DMADATA")));
-static uint32_t xts_tweak_key[8] __attribute__((aligned(16), section(".DMADATA")));
+static uint32_t xts_data_key[8];
+static uint32_t xts_tweak_key[8];
 
 typedef struct {
 	uint32_t w[4];
@@ -13,7 +13,7 @@ typedef struct {
 
 #define XTS_MAX_BATCH_SECTORS (UDISK_BUF_SIZE / SECTOR_SIZE)
 
-static xts_block_t xts_tweaks[XTS_MAX_BATCH_SECTORS] __attribute__((aligned(16), section(".DMADATA")));
+static xts_block_t xts_tweaks[XTS_MAX_BATCH_SECTORS];
 
 void phantomdrive_crypto_unlock(const uint8_t *password, size_t pw_len,
                                 uint8_t salt[KDF_SALT_SIZE])
