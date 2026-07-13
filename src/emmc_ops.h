@@ -10,7 +10,7 @@
 
 static inline uint32_t compute_physical_lba(uint32_t host_lba)
 {
-    if (phantomdrive_state == STATE_UNLOCKED)
+    if (!phantomdrive_is_locked())
         return host_lba + LOCKED_SECTORS;
     return host_lba;
 }

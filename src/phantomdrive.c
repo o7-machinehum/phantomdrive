@@ -7,7 +7,7 @@
 #include <stdbool.h>
 #include <string.h>
 
-volatile uint8_t phantomdrive_state = STATE_LOCKED;
+static volatile uint8_t phantomdrive_state = STATE_LOCKED;
 
 __attribute__((aligned(16))) uint32_t aes_key[8] __attribute__((section(".DMADATA")));
 

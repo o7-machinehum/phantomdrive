@@ -154,7 +154,7 @@ static uint8_t write_chunk_to_sd(uint8_t *buf, uint32_t write_lba, uint16_t chun
     TF_EMMCParam.EMMCOpErr = 0;
     TF_EMMCParam.EMMCSecSize = SECTOR_SIZE;
 
-    if (phantomdrive_state == STATE_UNLOCKED)
+    if (!phantomdrive_is_locked())
         status = write_chunk_to_sd_profiled(buf, write_lba, &reqnum);
     else
         status = EMMCCardWriteMulSec(&TF_EMMCParam, &reqnum, buf, write_lba);
@@ -219,7 +219,7 @@ static uint8_t write_received_chunk(uint8_t *buf, uint32_t lba, uint16_t chunk_s
     }
 
     write_profile_add_snoop(prof_start);
-    if (phantomdrive_state == STATE_UNLOCKED) {
+    if (!phantomdrive_is_locked()) {
         prof_start = write_profile_now();
         phantomdrive_crypt_buf(buf, physical_lba, chunk_sectors);
         write_profile_add_crypt(prof_start);

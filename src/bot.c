@@ -35,6 +35,19 @@ void bot_stall_endpoints(void)
     }
 }
 
+static bool read10_enters_hidden_region(void)
+{
+    uint32_t lba = g_bot.current_lba;
+    uint32_t sector_count = g_bot.transfer_bytes_left / SECTOR_SIZE;
+
+    if (sector_count == 0)
+        return false;
+    if (lba >= LOCKED_SECTORS)
+        return true;
+
+    return sector_count > LOCKED_SECTORS - lba;
+}
+
 void scsi_parse_rw10_cdb(void)
 {
     g_bot.current_lba = (uint32_t)g_cbw_csw.mCBW.mCBW_CB_Buf[2] << 24;
@@ -127,9 +140,16 @@ void bot_dispatch_scsi(void)
                 break;
 
             case CMD_U_READ10:
-                if (g_bot.device_ready)
+                if (g_bot.device_ready) {
                     scsi_parse_rw10_cdb();
-                else {
+                    if (phantomdrive_is_locked() &&
+                        read10_enters_hidden_region()) {
+                        bot_set_sense(SENSE_KEY_ILLEGAL_REQUEST,
+                                      SENSE_ASC_LBA_OUT_OF_RANGE,
+                                      CSW_STATUS_FAILED);
+                        bot_stall_endpoints();
+                    }
+                } else {
                     bot_set_sense(SENSE_KEY_NOT_READY, SENSE_ASC_MEDIUM_NOT_PRESENT, CSW_STATUS_FAILED);
                     bot_stall_endpoints();
                 }

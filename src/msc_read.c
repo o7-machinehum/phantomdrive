@@ -75,6 +75,7 @@ static void queue_usb_read_sector(read_diag_t *diag, uint8_t send_slot,
 
 static void read_stream_usb2(uint32_t actual_lba, uint16_t preqnum)
 {
+    bool decrypt = !phantomdrive_is_locked();
     read_pipe_t pipe = {
         .emmc_done = 0,
         .usb_done = 0,
@@ -135,7 +136,7 @@ static void read_stream_usb2(uint32_t actual_lba, uint16_t preqnum)
             uint8_t completed_slot = pipe.emmc_slot;
             uint8_t *completed_sector = read_ring_slot(completed_slot);
 
-            if (phantomdrive_state == STATE_UNLOCKED)
+            if (decrypt)
                 phantomdrive_crypt_buf(completed_sector, actual_lba + pipe.emmc_done, 1);
 
             diag_check_sd_sector(&diag, completed_sector, pipe.emmc_done);
@@ -154,7 +155,7 @@ static void read_stream_usb2(uint32_t actual_lba, uint16_t preqnum)
             uint8_t completed_slot = pipe.emmc_slot;
             uint8_t *completed_sector = read_ring_slot(completed_slot);
 
-            if (phantomdrive_state == STATE_UNLOCKED)
+            if (decrypt)
                 phantomdrive_crypt_buf(completed_sector, actual_lba + pipe.emmc_done, 1);
 
             diag_check_sd_sector(&diag, completed_sector, pipe.emmc_done);

@@ -27,6 +27,7 @@ extern "C" {
 #define SENSE_ASC_WRITE_ERROR           0x0C
 #define SENSE_KEY_ILLEGAL_REQUEST       0x05
 #define SENSE_ASC_INVALID_COMMAND       0x20
+#define SENSE_ASC_LBA_OUT_OF_RANGE      0x21
 
 /* CSW Status */
 #define CSW_STATUS_PASSED       0x00
