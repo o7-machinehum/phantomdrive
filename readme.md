@@ -40,12 +40,18 @@ make UART=1 DEBUG_USB=1 # Enable USB Debugging
 ```
 
 ## Build and Flashing the project
+
+Flashing requires the AES mode to be selected explicitly in the same `make` invocation.
+
 ``` bash
-make
 # Remove flash drive
 # While holding boot button, plug in
-./wch-ch56x-isp/wch-ch56x-isp -d=off # This is needed just one to disable debug mode
-make flash
+
+# Build and flash AES-XTS firmware
+make AES_MODE=XTS flash
+
+# Or build and flash AES-CTR firmware
+make AES_MODE=CTR flash
 ```
 
 ## Unlocking Drive
