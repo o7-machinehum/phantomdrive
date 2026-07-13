@@ -5,9 +5,9 @@
 	(uuid "73c7e5ea-07c9-44ef-a9f8-630a9b8be271")
 	(paper "A4")
 	(title_block
-		(title "Overdrive V2")
-		(date "2026-03-19")
-		(rev "R0.1")
+		(title "Phantomdrive")
+		(date "2026-03-29")
+		(rev "R1.0")
 		(company "Rootkit Labs")
 		(comment 1 "Ryan Walker")
 		(comment 2 "info@rootkitlabs.com")
