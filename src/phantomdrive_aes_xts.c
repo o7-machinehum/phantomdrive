@@ -56,7 +56,7 @@ static void xts_make_tweaks(uint32_t sd_lba, uint16_t num_sectors)
 
 	ECDC_Init(MODE_AES_ECB, ECDCCLK_240MHZ, KEYLENGTH_256BIT,
 	          (puint32_t)xts_tweak_key, 0);
-	ECDC_Excute(SINGLEREGISTER_ENCRY, MODE_LITTLE_ENDIAN);
+	ECDC_Excute(SINGLEREGISTER_ENCRY, MODE_BIG_ENDIAN);
 
 	for (uint16_t i = 0; i < num_sectors; i++) {
 		tweak_input.w[1] = sd_lba + i;
