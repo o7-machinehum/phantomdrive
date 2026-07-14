@@ -2,7 +2,6 @@
 #include "phantomdrive_crypto.h"
 #include "bot_state.h"
 #include "CH56x_ecdc.h"
-#include "debug.h"
 
 static uint32_t aes_key[8];
 
@@ -28,20 +27,8 @@ static void phantomdrive_ecdc_set_sector_nonce(uint32_t sd_lba)
 
 static void phantomdrive_ctr_buf(uint8_t *buf, uint32_t sd_lba, uint16_t num_sectors)
 {
-#ifdef DEBUG_USB
-	static uint8_t clog = 0;
-	uint8_t *orig_buf = buf;
-	uint32_t orig_lba = sd_lba;
-	uint16_t orig_num_sectors = num_sectors;
-	uint32_t pre;
-#endif
-
 	if (num_sectors == 0)
 		return;
-
-#ifdef DEBUG_USB
-	pre = *(volatile uint32_t*)buf;
-#endif
 
 	for (uint16_t i = 0; i < num_sectors; i++) {
 		phantomdrive_ecdc_set_sector_nonce(sd_lba + i);
@@ -51,15 +38,6 @@ static void phantomdrive_ctr_buf(uint8_t *buf, uint32_t sd_lba, uint16_t num_sec
 
 	/* Disable ECDC so subsequent eMMC DMA isn't double-encrypted */
 	phantomdrive_ecdc_disable_data_path();
-
-#ifdef DEBUG_USB
-	if (clog < 5) {
-		uint32_t post = *(volatile uint32_t*)orig_buf;
-		log_printf("CTR lba=%lu n=%u %08lx->%08lx ctrl=%04x\r\n",
-		           orig_lba, orig_num_sectors, pre, post, R16_ECEC_CTRL);
-		clog++;
-	}
-#endif
 }
 
 void phantomdrive_encrypt_buf(uint8_t *buf, uint32_t sd_lba, uint16_t num_sectors)

@@ -28,11 +28,6 @@ ifeq ($(UART),1)
 DEFINE_OPTS += -DDEBUG=1
 endif
 
-# Add USB UART debugging.
-ifeq ($(DEBUG_USB), 1)
-DEFINE_OPTS += -DDEBUG_USB
-endif
-
 # Optimisation option(s)
 OPTIM_OPTS = -O3
 # Debug option(s)

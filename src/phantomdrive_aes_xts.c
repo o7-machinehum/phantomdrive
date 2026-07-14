@@ -2,7 +2,6 @@
 #include "phantomdrive_crypto.h"
 #include "bot_state.h"
 #include "CH56x_ecdc.h"
-#include "debug.h"
 
 static uint32_t xts_data_key[8];
 static uint32_t xts_tweak_key[8];
@@ -68,20 +67,8 @@ static void xts_make_tweaks(uint32_t sd_lba, uint16_t num_sectors)
 static void phantomdrive_xts_buf(uint8_t *buf, uint32_t sd_lba,
                                  uint16_t num_sectors, uint8_t ecdc_mode)
 {
-#ifdef DEBUG_USB
-	static uint8_t clog = 0;
-	uint8_t *orig_buf = buf;
-	uint32_t orig_lba = sd_lba;
-	uint16_t orig_num_sectors = num_sectors;
-	uint32_t pre;
-#endif
-
 	if (num_sectors == 0)
 		return;
-
-#ifdef DEBUG_USB
-	pre = *(volatile uint32_t*)buf;
-#endif
 
 	while (num_sectors) {
 		uint16_t batch = num_sectors;
@@ -108,15 +95,6 @@ static void phantomdrive_xts_buf(uint8_t *buf, uint32_t sd_lba,
 
 	/* Disable ECDC so subsequent eMMC DMA isn't double-encrypted */
 	phantomdrive_ecdc_disable_data_path();
-
-#ifdef DEBUG_USB
-	if (clog < 5) {
-		uint32_t post = *(volatile uint32_t*)orig_buf;
-		log_printf("XTS lba=%lu n=%u %08lx->%08lx ctrl=%04x\r\n",
-		           orig_lba, orig_num_sectors, pre, post, R16_ECEC_CTRL);
-		clog++;
-	}
-#endif
 }
 
 void phantomdrive_encrypt_buf(uint8_t *buf, uint32_t sd_lba, uint16_t num_sectors)

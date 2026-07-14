@@ -36,7 +36,6 @@ sudo cp -r xpack-riscv-none-elf-gcc-12.2.0-1/* /usr/local/
 ## Debugging
 ```
 make UART=1 # Enable UART
-make UART=1 DEBUG_USB=1 # Enable USB Debugging
 ```
 
 ## Build and Flashing the project
