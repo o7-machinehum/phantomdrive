@@ -14,6 +14,17 @@ typedef struct {
 
 static xts_block_t xts_tweaks[XTS_MAX_BATCH_SECTORS];
 
+static void xts_normalize_tweak(xts_block_t *tweak)
+{
+	uint8_t *byte = (uint8_t *)tweak;
+
+	for (size_t i = 0; i < sizeof(*tweak) / 2; i++) {
+		uint8_t tmp = byte[i];
+		byte[i] = byte[sizeof(*tweak) - 1 - i];
+		byte[sizeof(*tweak) - 1 - i] = tmp;
+	}
+}
+
 void phantomdrive_crypto_unlock(const uint8_t *password, size_t pw_len,
                                 uint8_t salt[KDF_SALT_SIZE])
 {
@@ -61,6 +72,9 @@ static void xts_make_tweaks(uint32_t sd_lba, uint16_t num_sectors)
 		tweak_input.w[1] = sd_lba + i;
 		ECDC_SingleRegister((puint32_t)tweak_input.w,
 		                    (puint32_t)xts_tweaks[i].w);
+		/* ECDC returns the AES result in reverse byte order; normalize it
+		 * before XTS multiplication so the disk format matches OpenSSL. */
+		xts_normalize_tweak(&xts_tweaks[i]);
 	}
 }
 
@@ -82,6 +96,8 @@ static void phantomdrive_xts_buf(uint8_t *buf, uint32_t sd_lba,
 
 		ECDC_Init(MODE_AES_ECB, ECDCCLK_240MHZ, KEYLENGTH_256BIT,
 		          (puint32_t)xts_data_key, 0);
+		/* This RAMX byte order, combined with the normalized tweak above,
+		 * is the XTS layout verified by the OpenSSL disk test. */
 		ECDC_Excute(ecdc_mode, MODE_LITTLE_ENDIAN);
 		ECDC_SelfDMA((uint32_t)buf, ((uint32_t)batch * SECTOR_SIZE) / 16);
 
