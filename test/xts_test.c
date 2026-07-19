@@ -1,9 +1,10 @@
-#include <stdbool.h>
+#include <fcntl.h>
 #include <stdint.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
+#include <unistd.h>
 
-#include <openssl/aes.h>
 #include <openssl/evp.h>
 
 #include "../src/crypto.h"
@@ -11,163 +12,223 @@
 
 #define KEY_SIZE 32
 #define SECTOR_SIZE 512
+#define START_LBA LOCKED_SECTORS
+#define CHUNK_SIZE (1024 * 1024)
 
-typedef void (*aes_block_crypt_fn)(const unsigned char *, unsigned char *,
-                                   const AES_KEY *);
-
-static void u32be(uint8_t *p, uint32_t x)
+static void write_u32_be(uint8_t output[4], uint32_t value)
 {
-	p[0] = x >> 24;
-	p[1] = x >> 16;
-	p[2] = x >> 8;
-	p[3] = x;
+	output[0] = value >> 24;
+	output[1] = value >> 16;
+	output[2] = value >> 8;
+	output[3] = value;
 }
 
-static void ecdc_key_to_aes_key(uint8_t aes_key[32], const uint8_t ecdc_key[32])
+static void make_openssl_key(uint8_t openssl_key[KEY_SIZE],
+                             const uint8_t ecdc_key[KEY_SIZE])
 {
-	for (int i = 0; i < 32; i++)
-		aes_key[i] = ecdc_key[31 - i];
+	for (int i = 0; i < KEY_SIZE; i++)
+		openssl_key[i] = ecdc_key[KEY_SIZE - 1 - i];
 }
 
-static void make_tweak_input(uint8_t tweak_input[AES_BLOCK_SIZE], uint32_t lba)
+static int decrypt_sector(EVP_CIPHER_CTX *aes,
+                          uint8_t sector[SECTOR_SIZE],
+                          const uint8_t key[KEY_SIZE * 2], uint32_t lba)
 {
-	memset(tweak_input, 0, AES_BLOCK_SIZE);
-	u32be(tweak_input + 8, lba);
-}
+	uint8_t tweak[16] = {0};
+	uint8_t final_block[16];
+	int decrypted_len;
+	int final_len;
 
-static void xts_mul_alpha(uint8_t tweak[AES_BLOCK_SIZE])
-{
-	uint8_t carry = 0;
-
-	for (int i = 0; i < AES_BLOCK_SIZE; i++) {
-		uint8_t next_carry = tweak[i] >> 7;
-		tweak[i] = (uint8_t)((tweak[i] << 1) | carry);
-		carry = next_carry;
+	write_u32_be(tweak + 8, lba);
+	if (EVP_DecryptInit_ex(aes, EVP_aes_256_xts(), NULL,
+	                       key, tweak) != 1) {
+		fprintf(stderr, "Failed to initialize AES-XTS\n");
+		return -1;
 	}
 
-	if (carry)
-		tweak[0] ^= 0x87;
-}
-
-static void xts_xor_block(uint8_t *block, const uint8_t tweak[AES_BLOCK_SIZE])
-{
-	for (int i = 0; i < AES_BLOCK_SIZE; i++)
-		block[i] ^= tweak[i];
-}
-
-static void xts_make_tweak(uint8_t tweak[AES_BLOCK_SIZE], uint32_t lba,
-                           AES_KEY *tweak_key)
-{
-	uint8_t tweak_input[AES_BLOCK_SIZE];
-
-	make_tweak_input(tweak_input, lba);
-	AES_encrypt(tweak_input, tweak, tweak_key);
-}
-
-static void xts_crypt_sector(uint8_t sector[SECTOR_SIZE], uint32_t lba,
-                             AES_KEY *data_key, AES_KEY *tweak_key,
-                             aes_block_crypt_fn crypt)
-{
-	uint8_t tweak[AES_BLOCK_SIZE];
-	uint8_t block[AES_BLOCK_SIZE];
-
-	xts_make_tweak(tweak, lba, tweak_key);
-
-	for (int off = 0; off < SECTOR_SIZE; off += AES_BLOCK_SIZE) {
-		xts_xor_block(sector + off, tweak);
-		crypt(sector + off, block, data_key);
-		memcpy(sector + off, block, AES_BLOCK_SIZE);
-		xts_xor_block(sector + off, tweak);
-		xts_mul_alpha(tweak);
+	if (EVP_CIPHER_CTX_set_padding(aes, 0) != 1) {
+		fprintf(stderr, "Failed to disable AES-XTS padding\n");
+		return -1;
 	}
+
+	if (EVP_DecryptUpdate(aes, sector, &decrypted_len,
+	                      sector, SECTOR_SIZE) != 1) {
+		fprintf(stderr, "Failed to decrypt AES-XTS sector\n");
+		return -1;
+	}
+
+	if (decrypted_len != SECTOR_SIZE) {
+		fprintf(stderr, "Decrypted sector has the wrong size\n");
+		return -1;
+	}
+
+	if (EVP_DecryptFinal_ex(aes, final_block, &final_len) != 1) {
+		fprintf(stderr, "Failed to finalize AES-XTS decryption\n");
+		return -1;
+	}
+
+	if (final_len != 0) {
+		fprintf(stderr, "AES-XTS produced unexpected final data\n");
+		return -1;
+	}
+
+	return 0;
 }
 
-static bool evp_xts_encrypt(uint8_t out[SECTOR_SIZE], const uint8_t in[SECTOR_SIZE],
-                            const uint8_t data_key[32], const uint8_t tweak_key[32],
-                            uint32_t lba)
+static int decrypt_device(const char *device, const uint8_t data_key[KEY_SIZE],
+                          const uint8_t tweak_key[KEY_SIZE])
 {
-	EVP_CIPHER_CTX *ctx = EVP_CIPHER_CTX_new();
-	uint8_t xts_key[KEY_SIZE * 2];
-	uint8_t tweak_input[AES_BLOCK_SIZE];
-	int out_len = 0;
-	int final_len = 0;
-	bool ok = false;
+	uint8_t openssl_key[KEY_SIZE * 2];
+	int input_fd = open(device, O_RDONLY);
+	if (input_fd < 0) {
+		perror(device);
+		return 1;
+	}
 
-	if (!ctx)
-		return false;
+	off_t device_size = lseek(input_fd, 0, SEEK_END);
+	off_t input_start = (off_t)START_LBA * SECTOR_SIZE;
+	if (device_size < 0) {
+		perror("lseek");
+		close(input_fd);
+		return 1;
+	}
 
-	memcpy(xts_key, data_key, 32);
-	memcpy(xts_key + 32, tweak_key, 32);
-	make_tweak_input(tweak_input, lba);
+	if (device_size < input_start) {
+		fprintf(stderr, "%s is smaller than the locked area\n", device);
+		close(input_fd);
+		return 1;
+	}
 
-	if (EVP_CipherInit_ex(ctx, EVP_aes_256_xts(), NULL, xts_key, tweak_input, 1) != 1)
-		goto out;
-	EVP_CIPHER_CTX_set_padding(ctx, 0);
-	if (EVP_CipherUpdate(ctx, out, &out_len, in, SECTOR_SIZE) != 1)
-		goto out;
-	if (EVP_CipherFinal_ex(ctx, out + out_len, &final_len) != 1)
-		goto out;
+	if (lseek(input_fd, input_start, SEEK_SET) < 0) {
+		perror("lseek");
+		close(input_fd);
+		return 1;
+	}
 
-	ok = (out_len + final_len) == SECTOR_SIZE;
+	uint8_t *buffer = malloc(CHUNK_SIZE);
+	if (buffer == NULL) {
+		perror("malloc");
+		close(input_fd);
+		return 1;
+	}
 
-out:
-	EVP_CIPHER_CTX_free(ctx);
-	return ok;
+	EVP_CIPHER_CTX *aes = EVP_CIPHER_CTX_new();
+	if (aes == NULL) {
+		fprintf(stderr, "Failed to create AES context\n");
+		free(buffer);
+		close(input_fd);
+		return 1;
+	}
+
+	make_openssl_key(openssl_key, data_key);
+	make_openssl_key(openssl_key + KEY_SIZE, tweak_key);
+
+	off_t data_size = device_size - input_start;
+	int output_fd = -1;
+	int result = 0;
+	for (off_t total = 0; total < data_size;) {
+		size_t wanted = CHUNK_SIZE;
+		if ((off_t)wanted > data_size - total)
+			wanted = (size_t)(data_size - total);
+
+		ssize_t bytes_read = read(input_fd, buffer, wanted);
+		if (bytes_read < 0) {
+			perror("read");
+			result = 1;
+			break;
+		}
+
+		if (bytes_read == 0) {
+			fprintf(stderr, "Unexpected end of device\n");
+			result = 1;
+			break;
+		}
+
+		if (bytes_read % SECTOR_SIZE != 0) {
+			fprintf(stderr, "Failed to read complete sectors\n");
+			result = 1;
+			break;
+		}
+
+		for (ssize_t offset = 0; offset < bytes_read;
+		     offset += SECTOR_SIZE) {
+			uint32_t lba = START_LBA;
+			lba += (uint32_t)((total + offset) / SECTOR_SIZE);
+
+			if (decrypt_sector(aes, buffer + offset,
+			                   openssl_key, lba) != 0) {
+				fprintf(stderr, "XTS decryption failed at LBA %u\n", lba);
+				result = 1;
+				break;
+			}
+		}
+		if (result != 0)
+			break;
+
+		if (total == 0 &&
+		    (buffer[510] != 0x55 || buffer[511] != 0xaa)) {
+			fprintf(stderr,
+			        "Decrypted data has no MBR signature; refusing to write "
+			        "unencrypted.blob\n");
+			result = 1;
+			break;
+		}
+		if (total == 0)
+			printf("Valid MBR signature found\n");
+
+		if (output_fd < 0) {
+			output_fd = open("unencrypted.blob",
+			                 O_WRONLY | O_CREAT | O_TRUNC, 0644);
+			if (output_fd < 0) {
+				perror("unencrypted.blob");
+				result = 1;
+				break;
+			}
+		}
+
+		ssize_t bytes_written = write(output_fd, buffer, (size_t)bytes_read);
+		if (bytes_written < 0) {
+			perror("write");
+			result = 1;
+			break;
+		}
+
+		if (bytes_written != bytes_read) {
+			fprintf(stderr, "Short write to unencrypted.blob\n");
+			result = 1;
+			break;
+		}
+
+		total += bytes_read;
+	}
+
+	close(input_fd);
+	if (output_fd >= 0)
+		close(output_fd);
+	EVP_CIPHER_CTX_free(aes);
+	free(buffer);
+	return result;
 }
 
-int main(void)
+int main(int argc, char *argv[])
 {
 	const uint8_t password[] = "pineapple";
-	uint8_t salt[KDF_SALT_SIZE] = {0x34, 0xfc, 0x1f, 0xa7, 0x14, 0x54, 0x67, 0xf7};
-	uint8_t ecdc_data_key[KEY_SIZE];
-	uint8_t ecdc_tweak_key[KEY_SIZE];
+
+	// ID_SERIAL_SHORT=Phantomdrive_SN:3C FB 1F A7 14 54 6F F6
+	uint8_t salt[KDF_SALT_SIZE] = {
+		0x3C, 0xfb, 0x1f, 0xa7, 0x14, 0x54, 0x6f, 0xf6
+	};
 	uint8_t data_key[KEY_SIZE];
 	uint8_t tweak_key[KEY_SIZE];
-	uint8_t plain[SECTOR_SIZE];
-	uint8_t manual_cipher[SECTOR_SIZE];
-	uint8_t evp_cipher[SECTOR_SIZE];
-	uint8_t roundtrip[SECTOR_SIZE];
-	uint32_t lba = LOCKED_SECTORS + 1234;
-	AES_KEY data_encrypt_key;
-	AES_KEY data_decrypt_key;
-	AES_KEY tweak_encrypt_key;
 
-	for (int i = 0; i < SECTOR_SIZE; i++)
-		plain[i] = (uint8_t)(i ^ (i >> 3) ^ 0x5a);
+	if (argc != 2) {
+		fprintf(stderr, "Usage: %s /dev/sdX\n", argv[0]);
+		return 1;
+	}
 
-	derive_key(password, strlen((const char *)password), salt, ecdc_data_key);
+	derive_key(password, sizeof(password) - 1, salt, data_key);
 	salt[0]++;
-	derive_key(password, strlen((const char *)password), salt, ecdc_tweak_key);
-	ecdc_key_to_aes_key(data_key, ecdc_data_key);
-	ecdc_key_to_aes_key(tweak_key, ecdc_tweak_key);
+	derive_key(password, sizeof(password) - 1, salt, tweak_key);
 
-	AES_set_encrypt_key(data_key, 256, &data_encrypt_key);
-	AES_set_decrypt_key(data_key, 256, &data_decrypt_key);
-	AES_set_encrypt_key(tweak_key, 256, &tweak_encrypt_key);
-
-	memcpy(manual_cipher, plain, sizeof(manual_cipher));
-	xts_crypt_sector(manual_cipher, lba, &data_encrypt_key, &tweak_encrypt_key,
-	                 AES_encrypt);
-
-	if (!evp_xts_encrypt(evp_cipher, plain, data_key, tweak_key, lba)) {
-		fprintf(stderr, "OpenSSL EVP XTS encryption failed\n");
-		return 1;
-	}
-
-	if (memcmp(manual_cipher, evp_cipher, SECTOR_SIZE) != 0) {
-		fprintf(stderr, "Manual XTS encryption does not match OpenSSL EVP\n");
-		return 1;
-	}
-
-	memcpy(roundtrip, manual_cipher, sizeof(roundtrip));
-	xts_crypt_sector(roundtrip, lba, &data_decrypt_key, &tweak_encrypt_key,
-	                 AES_decrypt);
-
-	if (memcmp(roundtrip, plain, SECTOR_SIZE) != 0) {
-		fprintf(stderr, "Manual XTS decrypt roundtrip failed\n");
-		return 1;
-	}
-
-	printf("XTS test passed\n");
-	return 0;
+	return decrypt_device(argv[1], data_key, tweak_key);
 }

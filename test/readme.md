@@ -24,15 +24,18 @@ make sha256_test # To test the sha256 function
 ./sha256_test
 ```
 
-### Encryption and KDF Tests
-Generate a key with our salt + password, then decrypt our disk. Note that you need to remove the SD card from the device and insert it into your computer with a SD card reader. You need to change these two values to your password and the salt. You can get your custom salt like so...
+### AES-CTR Test
+
+First write data through an unlocked Phantomdrive running the AES-CTR firmware,
+then unmount it, remove the SD card, and insert the SD card into the computer.
+Set the password and device salt in `ctr_test.c`. You can find the salt with:
 
 ``` bash
 udevadm info --query=property --name=/dev/sdc | grep ID_SERIAL_SHORT
 ID_SERIAL_SHORT=HydraUSB3_SN:34FC1FA7145467F7
 ```
 
-Then fill out the required values in the code
+Then fill out the required values in `ctr_test.c`:
 
 ``` C
 const uint8_t password[] = "pineapple";
@@ -40,33 +43,29 @@ uint8_t salt[KDF_SALT_SIZE] = {0x34, 0xfc, 0x1f, 0xa7, 0x14, 0x54, 0x67, 0xf7};
 ```
 
 ``` bash
-make kdf
-./kdf /dev/sdX # You might need sudo
+make ctr_test
+sudo ./ctr_test /dev/sdX
 sudo losetup -Pf --show unencrypted.blob
 sudo mount /dev/loop0p1 /mnt/
-sudo f3read /mnt/
-F3 read 10.0
-Copyright (C) 2010 Digirati Internet LTDA.
-This is free software; see the source for copying conditions.
-
-                  SECTORS      ok/corrupted/changed/overwritten
-Validating file 1.h2w ... 1611032/        0/      0/      0 Avg: 938.80 MB/s
-	Min: 3.67 MB/s, Max: 1.28 GB/s, 17 samples
-
-  Data OK: 786.64 MB (1611032 sectors)
-Data LOST: 0.00 Bytes (0 sectors)
-	       Corrupted: 0.00 Bytes (0 sectors)
-	Slightly changed: 0.00 Bytes (0 sectors)
-	     Overwritten: 0.00 Bytes (0 sectors)
-Average sequential read speed: 947.09 MB/s (1611032 sectors / 830.5ms)
+# Verify your files. You can use f3 if you like.
 ```
 
+`ctr_test` reads the ciphertext actually written by the device, derives the key
+with the project KDF, and decrypts it with OpenSSL AES-256-CTR.
+
 ### AES-XTS Test
+
+First write data through an unlocked Phantomdrive running the AES-XTS firmware,
+then unmount it, remove the SD card, and insert the SD card into the computer.
+Set the password and device salt in `xts_test.c`, then decrypt the raw SD card:
 
 ``` bash
 cd test
 make xts_test
-./xts_test
+sudo ./xts_test /dev/sdX
+sudo losetup -Pf --show unencrypted.blob
+sudo mount /dev/loop0p1 /mnt/
 ```
 
-This test derives the Phantomdrive AES-XTS data and tweak keys, encrypts one sector with the project reference transform, and checks it against OpenSSL AES-256-XTS.
+`xts_test` reads the ciphertext actually written by the device, derives the data
+and tweak keys with the project KDF, and decrypts it with OpenSSL AES-256-XTS.
