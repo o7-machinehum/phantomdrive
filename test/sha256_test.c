@@ -2,6 +2,7 @@
 #include <stdlib.h>
 #include <openssl/sha.h>
 #include <string.h>
+#include <stdbool.h>
 
 #include "../src/crypto.h"
 

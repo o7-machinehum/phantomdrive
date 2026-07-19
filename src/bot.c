@@ -13,7 +13,6 @@
 #include "msc_write.h"
 #include "phantomdrive.h"
 #include "CH56x_usb20_devbulk.h"
-#include "debug.h"
 #include <string.h>
 
 void bot_set_sense(uint8_t key, uint8_t asc, uint8_t status)
@@ -87,11 +86,6 @@ void bot_dispatch_scsi(void)
                 g_bot.transfer_flags |= BOT_FLAG_DATA_OUT;
         }
         g_bot.transfer_flags |= BOT_FLAG_CSW_PENDING;
-
-#ifdef DEBUG_USB
-        log_printf("CBW: cmd=0x%02X len=%d\r\n",
-                   g_cbw_csw.mCBW.mCBW_CB_Buf[0], g_bot.transfer_bytes_left);
-#endif
 
         switch (g_cbw_csw.mCBW.mCBW_CB_Buf[0])
         {
@@ -240,9 +234,6 @@ void bot_dispatch_scsi(void)
                 break;
 
             default:
-#ifdef DEBUG_USB
-                log_printf("SCSI: unsupported cmd 0x%02X\r\n", g_cbw_csw.mCBW.mCBW_CB_Buf[0]);
-#endif
                 bot_set_sense(SENSE_KEY_ILLEGAL_REQUEST, SENSE_ASC_INVALID_COMMAND, CSW_STATUS_FAILED);
                 g_bot.transfer_flags |= BOT_FLAG_DATA_IN;
                 bot_stall_endpoints();
@@ -319,9 +310,6 @@ void bot_send_response_data(void)
 void bot_send_csw(void)
 {
     g_bot.transfer_flags = 0x00;
-#ifdef DEBUG_USB
-    log_printf("CSW: sta=%d\r\n", g_bot.csw_status);
-#endif
 
     g_cbw_csw.mCSW.mCSW_Sig[0] = 'U';
     g_cbw_csw.mCSW.mCSW_Sig[1] = 'S';

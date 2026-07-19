@@ -3,7 +3,6 @@
  */
 #include "msc_write.h"
 #include "emmc_ops.h"
-#include "msc_diag.h"
 #include "write_profile.h"
 #include "CH56x_ecdc.h"
 #include "CH56x_usb20_devbulk.h"
@@ -164,7 +163,6 @@ static uint8_t write_chunk_to_sd(uint8_t *buf, uint32_t write_lba, uint16_t chun
     PFIC_EnableIRQ(EMMC_IRQn);
     write_profile_add_sd(prof_start);
 
-    diag_log_write_result(status, chunk_sectors, reqnum);
     return status;
 }
 
@@ -174,13 +172,12 @@ static uint8_t *alternate_write_buf(uint8_t *buf)
 }
 
 static void receive_chunk_usb2(uint8_t *buf, uint16_t chunk_sectors,
-                               uint32_t lba, bool *first_packet)
+                               bool *first_packet)
 {
     uint16_t sectors_received = 0;
     uint32_t prof_start = write_profile_now();
 
     R8_USB_INT_FG = RB_USB_IF_TRANSFER;
-    diag_log_write_chunk(lba, chunk_sectors);
 
     if (*first_packet) {
         memcpy(buf, endp1Rbuff, SECTOR_SIZE);
@@ -204,7 +201,6 @@ static void receive_chunk_usb2(uint8_t *buf, uint16_t chunk_sectors,
     }
 
     write_profile_add_usb(prof_start);
-    diag_write_checksums_usb2(buf, chunk_sectors);
 }
 
 static uint8_t write_received_chunk(uint8_t *buf, uint32_t lba, uint16_t chunk_sectors)
@@ -221,7 +217,7 @@ static uint8_t write_received_chunk(uint8_t *buf, uint32_t lba, uint16_t chunk_s
     write_profile_add_snoop(prof_start);
     if (!phantomdrive_is_locked()) {
         prof_start = write_profile_now();
-        phantomdrive_crypt_buf(buf, physical_lba, chunk_sectors);
+        phantomdrive_encrypt_buf(buf, physical_lba, chunk_sectors);
         write_profile_add_crypt(prof_start);
     }
     return write_chunk_to_sd(buf, physical_lba, chunk_sectors);
@@ -253,7 +249,7 @@ static void write_stream_usb2(uint16_t total_sectors, uint32_t lba)
 
     if (sectors_left > 0) {
         chunk_sectors = (sectors_left > buf_sectors) ? buf_sectors : sectors_left;
-        receive_chunk_usb2(buf, chunk_sectors, lba, &first_packet);
+        receive_chunk_usb2(buf, chunk_sectors, &first_packet);
 
         while (sectors_left > 0) {
             uint8_t status = write_received_chunk(buf, lba, chunk_sectors);
@@ -271,7 +267,7 @@ static void write_stream_usb2(uint16_t total_sectors, uint32_t lba)
 
             buf = alternate_write_buf(buf);
             chunk_sectors = (sectors_left > buf_sectors) ? buf_sectors : sectors_left;
-            receive_chunk_usb2(buf, chunk_sectors, lba, &first_packet);
+            receive_chunk_usb2(buf, chunk_sectors, &first_packet);
             wait_dat0_ready();
         }
     }
