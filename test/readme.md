@@ -21,8 +21,18 @@ These are tests to verify the cryptographic functions are working.
 ``` bash
 cd test
 make sha256_test # To test the sha256 function
-./sha256_test
+./build/sha256_test
 ```
+
+### PBKDF2-HMAC-SHA256 implementation
+
+``` bash
+cd test
+make pbkdf2_test
+./build/pbkdf2_test
+```
+
+This compares the project KDF at 600,000 iterations against OpenSSL.
 
 ### AES-CTR Test
 
@@ -44,7 +54,7 @@ uint8_t salt[KDF_SALT_SIZE] = {0x34, 0xfc, 0x1f, 0xa7, 0x14, 0x54, 0x67, 0xf7};
 
 ``` bash
 make ctr_test
-sudo ./ctr_test /dev/sdX
+sudo ./build/ctr_test /dev/sdX
 sudo losetup -Pf --show unencrypted.blob
 sudo mount /dev/loop0p1 /mnt/
 # Verify your files. You can use f3 if you like.
@@ -62,7 +72,7 @@ Set the password and device salt in `xts_test.c`, then decrypt the raw SD card:
 ``` bash
 cd test
 make xts_test
-sudo ./xts_test /dev/sdX
+sudo ./build/xts_test /dev/sdX
 sudo losetup -Pf --show unencrypted.blob
 sudo mount /dev/loop0p1 /mnt/
 ```

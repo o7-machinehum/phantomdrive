@@ -220,15 +220,26 @@ int main(int argc, char *argv[])
 	};
 	uint8_t data_key[KEY_SIZE];
 	uint8_t tweak_key[KEY_SIZE];
+	size_t pw_len = sizeof(password) - 1;
 
 	if (argc != 2) {
 		fprintf(stderr, "Usage: %s /dev/sdX\n", argv[0]);
 		return 1;
 	}
 
-	derive_key(password, sizeof(password) - 1, salt, data_key);
+	if (PKCS5_PBKDF2_HMAC((const char *)password, pw_len,
+	                      salt, KDF_SALT_SIZE, KDF_ROUNDS,
+	                      EVP_sha256(), sizeof(data_key), data_key) != 1) {
+		fprintf(stderr, "OpenSSL PBKDF2 failed for data key\n");
+		return 1;
+	}
 	salt[0]++;
-	derive_key(password, sizeof(password) - 1, salt, tweak_key);
+	if (PKCS5_PBKDF2_HMAC((const char *)password, pw_len,
+	                      salt, KDF_SALT_SIZE, KDF_ROUNDS,
+	                      EVP_sha256(), sizeof(tweak_key), tweak_key) != 1) {
+		fprintf(stderr, "OpenSSL PBKDF2 failed for tweak key\n");
+		return 1;
+	}
 
 	return decrypt_device(argv[1], data_key, tweak_key);
 }

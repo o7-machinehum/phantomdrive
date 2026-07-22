@@ -1,0 +1,9 @@
+#!/usr/bin/env bash
+
+set -euo pipefail
+
+make clean
+make AES_MODE=CTR KDF_ROUNDS=100000
+make AES_MODE=CTR KDF_ROUNDS=600000
+make AES_MODE=XTS KDF_ROUNDS=100000
+make AES_MODE=XTS KDF_ROUNDS=600000

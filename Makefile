@@ -1,4 +1,3 @@
-RM := rm -rf
 COMPILER_PREFIX := riscv-none-elf
 
 ifeq ($(COMPILER_PREFIX),riscv-none-embed)
@@ -14,6 +13,7 @@ endif
 # Define option(s) defined in pre-processor compiler option(s)
 DEFINE_OPTS = -DMSC_DEVICE
 AES_MODE ?= XTS
+KDF_ROUNDS ?= 100000
 
 ifeq ($(AES_MODE),CTR)
 AES_SRCS = $(USER_DIR)/phantomdrive_aes_ctr.c
@@ -22,6 +22,16 @@ AES_SRCS = $(USER_DIR)/phantomdrive_aes_xts.c
 else
 $(error AES_MODE must be CTR or XTS)
 endif
+
+ifeq ($(KDF_ROUNDS),100000)
+KDF_MODE = 100K
+else ifeq ($(KDF_ROUNDS),600000)
+KDF_MODE = 600K
+else
+$(error KDF_ROUNDS must be 100000 or 600000)
+endif
+
+DEFINE_OPTS += -DKDF_ROUNDS=$(KDF_ROUNDS)U
 
 # Add UART debugging.
 ifeq ($(UART),1)
@@ -34,7 +44,7 @@ OPTIM_OPTS = -O3
 #DEBUG = -g
 DEBUG =
 
-BUILD_DIR = ./build/$(AES_MODE)
+BUILD_DIR = ./build/$(AES_MODE)_$(KDF_MODE)
 
 PROJECT = $(BUILD_DIR)/Phantomdrive_MSC
 
@@ -158,13 +168,15 @@ $(PROJECT).siz: $(PROJECT).elf
 	$(COMPILER_PREFIX)-size --format=berkeley "$(PROJECT).elf"
 	@echo ' '
 
+$(PROJECT).map: $(PROJECT).elf
+	@test -f "$@"
+
 flash: all
 	sudo ./wch-ch56x-isp/wch-ch56x-isp -d=off
 	sudo ./wch-ch56x-isp/wch-ch56x-isp -f "$(PROJECT).bin"
 
 # Other Targets
 clean:
-	-$(RM) $(OBJS) $(DEPS) $(SECONDARY_OUTPUTS) $(PROJECT).elf
-	-@echo ' '
+	rm -rf ./build
 
 .PHONY: all clean dependents
