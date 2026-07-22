@@ -187,8 +187,14 @@ int main(int argc, char *argv[])
 		0x34, 0xfc, 0x1f, 0xa7, 0x14, 0x54, 0x67, 0xf7,
 	};
 	uint8_t key[KEY_SIZE];
+	size_t pw_len = sizeof(password) - 1;
 
-	derive_key(password, sizeof(password) - 1, salt, key);
+	if (PKCS5_PBKDF2_HMAC((const char *)password, pw_len,
+	                      salt, KDF_SALT_SIZE, KDF_ROUNDS,
+	                      EVP_sha256(), sizeof(key), key) != 1) {
+		fprintf(stderr, "OpenSSL PBKDF2 failed\n");
+		return EXIT_FAILURE;
+	}
 
 	printf("Key: ");
 	for (size_t i = 0; i < KEY_SIZE; i++)

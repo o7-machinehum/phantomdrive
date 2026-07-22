@@ -40,18 +40,25 @@ make UART=1 # Enable UART
 
 ## Build and Flashing the project
 
-Flashing requires the AES mode to be selected explicitly in the same `make` invocation.
+The AES mode and PBKDF2 iteration count can be selected independently. Supported
+KDF values are `100000` and `600000`; 100,000 is the default.
 
 ``` bash
 # Remove flash drive
 # While holding boot button, plug in
 
-# Build and flash AES-XTS firmware
-make AES_MODE=XTS flash
+# Build and flash AES-XTS firmware with 600,000 PBKDF2 iterations
+make AES_MODE=XTS KDF_ROUNDS=600000 flash
 
-# Or build and flash AES-CTR firmware
-make AES_MODE=CTR flash
+# Or build and flash AES-CTR firmware with 100,000 iterations
+make AES_MODE=CTR KDF_ROUNDS=100000 flash
+
+# Build all four AES/KDF combinations
+./release.sh
 ```
+
+The four builds are written to `build/CTR_100K`, `build/CTR_600K`,
+`build/XTS_100K`, and `build/XTS_600K`.
 
 ## Unlocking Drive
 ``` bash
@@ -67,6 +74,9 @@ sudo echo "password:YourPasswordHere13245" > /mnt/unlock.txt
 
 This code has not been professionally audited. Treat Phantomdrive as an experimental open source hardware/firmware project rather than a formally reviewed security product. The current level of validation is described in the [test README](test/readme.md). I am not responsible for loss of data, security incidents, or other damage resulting from use of this project.
 
-The encrypted area currently uses AES-256-XTS. This is an on-disk format change from the previous AES-CTR implementation, so data written by older firmware will not decrypt correctly without migration or reformatting.
+The encrypted area can use AES-256-CTR or AES-256-XTS, with keys derived using
+PBKDF2-HMAC-SHA256 and either 100,000 or 600,000 iterations. AES mode and KDF
+iteration count affect the on-disk format, so firmware built with different
+settings cannot decrypt the same data without migration or reformatting.
 
 Unlock detection is also content-based. While the device is locked, any write data containing the string `password:` can be interpreted as an unlock attempt; the file does not need to be named `unlock.txt`.

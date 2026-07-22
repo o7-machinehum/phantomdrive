@@ -1,31 +1,35 @@
 CC = gcc
 CFLAGS = -Wall -Wextra -O2
 LDLIBS = -lcrypto -lssl
+BUILD_DIR = build
+TESTS = sha256_test pbkdf2_test ctr_test xts_test
 
-all: sha256_test ctr_test xts_test
+all: $(TESTS)
 
-sha256_test: sha256_test.o crypto.o
+$(TESTS): %: $(BUILD_DIR)/%
+
+$(BUILD_DIR)/sha256_test: $(BUILD_DIR)/sha256_test.o $(BUILD_DIR)/crypto.o
 	$(CC) $^ $(LDLIBS) -o $@
 
-ctr_test: ctr_test.o crypto.o
+$(BUILD_DIR)/pbkdf2_test: $(BUILD_DIR)/pbkdf2_test.o $(BUILD_DIR)/crypto.o
 	$(CC) $^ $(LDLIBS) -o $@
 
-xts_test: xts_test.o crypto.o
+$(BUILD_DIR)/ctr_test: $(BUILD_DIR)/ctr_test.o $(BUILD_DIR)/crypto.o
 	$(CC) $^ $(LDLIBS) -o $@
 
-sha256_test.o: sha256_test.c
+$(BUILD_DIR)/xts_test: $(BUILD_DIR)/xts_test.o $(BUILD_DIR)/crypto.o
+	$(CC) $^ $(LDLIBS) -o $@
+
+$(BUILD_DIR)/%.o: %.c | $(BUILD_DIR)
 	$(CC) $(CFLAGS) -c $< -o $@
 
-ctr_test.o: ctr_test.c
+$(BUILD_DIR)/crypto.o: ../src/crypto.c | $(BUILD_DIR)
 	$(CC) $(CFLAGS) -c $< -o $@
 
-xts_test.o: xts_test.c
-	$(CC) $(CFLAGS) -c $< -o $@
-
-crypto.o: ../src/crypto.c
-	$(CC) $(CFLAGS) -c $< -o $@
+$(BUILD_DIR):
+	mkdir -p $@
 
 clean:
-	rm -f sha256_test ctr_test xts_test *.o
+	rm -rf $(BUILD_DIR)
 
-.PHONY: all clean
+.PHONY: all clean $(TESTS)

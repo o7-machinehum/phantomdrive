@@ -161,27 +161,82 @@ void sha256(const uint8_t *data, size_t len, uint8_t hash_out[32])
 }
 
 /*****************************************************************************
- * KDF: Iterated SHA-256 key derivation
- * key = SHA256(salt || password), then 100000x key = SHA256(key || password)
+ * PBKDF2-HMAC-SHA256 key derivation (RFC 8018)
  *****************************************************************************/
-#define KDF_ROUNDS 100000
+#define SHA256_BLOCK_SIZE 64
+#define SHA256_DIGEST_SIZE 32
+
+static void hmac_sha256_init(const uint8_t *key, size_t key_len,
+                             uint32_t inner_state[8],
+                             uint32_t outer_state[8])
+{
+	uint8_t key_block[SHA256_BLOCK_SIZE] = {0};
+	sha256_ctx_t ctx;
+
+	if (key_len > SHA256_BLOCK_SIZE) {
+		sha256(key, key_len, key_block);
+	} else {
+		memcpy(key_block, key, key_len);
+	}
+
+	for (size_t i = 0; i < SHA256_BLOCK_SIZE; i++)
+		key_block[i] ^= 0x36;
+	sha256_init(&ctx);
+	sha256_update(&ctx, key_block, sizeof(key_block));
+	memcpy(inner_state, ctx.state, sizeof(ctx.state));
+
+	for (size_t i = 0; i < SHA256_BLOCK_SIZE; i++)
+		key_block[i] ^= 0x36 ^ 0x5c;
+	sha256_init(&ctx);
+	sha256_update(&ctx, key_block, sizeof(key_block));
+	memcpy(outer_state, ctx.state, sizeof(ctx.state));
+}
+
+static void sha256_restore_hmac_state(sha256_ctx_t *ctx,
+                                      const uint32_t state[8])
+{
+	memcpy(ctx->state, state, sizeof(ctx->state));
+	ctx->buf_len = 0;
+	ctx->total_len = SHA256_BLOCK_SIZE;
+}
+
+static void hmac_sha256(const uint32_t inner_state[8],
+                        const uint32_t outer_state[8],
+                        const uint8_t *data, size_t data_len,
+                        const uint8_t *suffix, size_t suffix_len,
+                        uint8_t hash_out[SHA256_DIGEST_SIZE])
+{
+	sha256_ctx_t ctx;
+	uint8_t inner_hash[SHA256_DIGEST_SIZE];
+
+	sha256_restore_hmac_state(&ctx, inner_state);
+	sha256_update(&ctx, data, data_len);
+	if (suffix_len > 0)
+		sha256_update(&ctx, suffix, suffix_len);
+	sha256_final(&ctx, inner_hash);
+
+	sha256_restore_hmac_state(&ctx, outer_state);
+	sha256_update(&ctx, inner_hash, sizeof(inner_hash));
+	sha256_final(&ctx, hash_out);
+}
 
 void derive_key(const uint8_t *password, size_t pw_len, uint8_t kdf_salt[KDF_SALT_SIZE], uint8_t key_out[32])
 {
-	sha256_ctx_t ctx;
-	int i;
+	uint32_t inner_state[8];
+	uint32_t outer_state[8];
+	uint8_t block_index[4] = {0, 0, 0, 1};
+	uint8_t u[SHA256_DIGEST_SIZE];
 
-	/* Round 0: key = SHA256(salt || password) */
-	sha256_init(&ctx);
-	sha256_update(&ctx, kdf_salt, KDF_SALT_SIZE);
-	sha256_update(&ctx, password, pw_len);
-	sha256_final(&ctx, key_out);
+	hmac_sha256_init(password, pw_len, inner_state, outer_state);
+	hmac_sha256(inner_state, outer_state,
+	            kdf_salt, KDF_SALT_SIZE,
+	            block_index, sizeof(block_index), u);
+	memcpy(key_out, u, sizeof(u));
 
-	/* Rounds 1..KDF_ROUNDS: key = SHA256(key || password) */
-	for (i = 0; i < KDF_ROUNDS; i++) {
-		sha256_init(&ctx);
-		sha256_update(&ctx, key_out, 32);
-		sha256_update(&ctx, password, pw_len);
-		sha256_final(&ctx, key_out);
+	for (uint32_t round = 1; round < KDF_ROUNDS; round++) {
+		hmac_sha256(inner_state, outer_state,
+		            u, sizeof(u), NULL, 0, u);
+		for (size_t i = 0; i < sizeof(u); i++)
+			key_out[i] ^= u[i];
 	}
 }
