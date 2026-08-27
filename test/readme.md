@@ -15,6 +15,7 @@ This test was also done after removing the disk, inserting, unlocking, and runni
 
 ## Encryption Tests
 These are tests to verify the cryptographic functions are working.
+Build them with `KDF_ROUNDS` set to the same value as the firmware.
 
 ### SHA256 implementation
 
@@ -28,7 +29,7 @@ make sha256_test # To test the sha256 function
 
 ``` bash
 cd test
-make pbkdf2_test
+make pbkdf2_test KDF_ROUNDS=600000
 ./build/pbkdf2_test
 ```
 
