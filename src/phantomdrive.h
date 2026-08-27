@@ -7,7 +7,9 @@
 
 #define STATE_LOCKED    0
 #define STATE_UNLOCKED  1
-#define LOCKED_SECTORS  (16777216UL)  /* 8GB in sectors */
+#ifndef LOCKED_SECTORS
+#define LOCKED_SECTORS  (16777216UL)  /* 8 GiB in sectors */
+#endif
 
 void phantomdrive_init(uint64_t unique_id);
 void phantomdrive_snoop_write(uint8_t *buf, uint32_t len);

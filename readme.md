@@ -40,15 +40,19 @@ make UART=1 # Enable UART
 
 ## Build and Flashing the project
 
-The AES mode and PBKDF2 iteration count can be selected independently. Supported
-KDF values are `100000` and `600000`; 100,000 is the default.
+The AES mode, PBKDF2 iteration count, and locked capacity can be selected
+independently. Supported KDF values are `100000` and `600000`; 100,000 is the
+default. `LOCKED_SECTORS` sets the locked (decoy) capacity in 512-byte sectors
+and defaults to 16,777,216 sectors (8 GiB). It must be smaller than the physical
+card's sector count; otherwise the unlocked capacity calculation underflows.
 
 ``` bash
 # Remove flash drive
 # While holding boot button, plug in
 
-# Build and flash AES-XTS firmware with 600,000 PBKDF2 iterations
-make AES_MODE=XTS KDF_ROUNDS=600000 flash
+# Build and flash AES-XTS firmware with 600,000 PBKDF2 iterations and an
+# 8 GiB locked capacity
+make AES_MODE=XTS KDF_ROUNDS=600000 LOCKED_SECTORS=16777216 flash
 
 # Or build and flash AES-CTR firmware with 100,000 iterations
 make AES_MODE=CTR KDF_ROUNDS=100000 flash

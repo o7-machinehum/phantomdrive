@@ -14,6 +14,7 @@ endif
 DEFINE_OPTS = -DMSC_DEVICE
 AES_MODE ?= XTS
 KDF_ROUNDS ?= 100000
+LOCKED_SECTORS ?= 16777216
 
 ifeq ($(AES_MODE),CTR)
 AES_SRCS = $(USER_DIR)/phantomdrive_aes_ctr.c
@@ -32,6 +33,7 @@ $(error KDF_ROUNDS must be 100000 or 600000)
 endif
 
 DEFINE_OPTS += -DKDF_ROUNDS=$(KDF_ROUNDS)U
+DEFINE_OPTS += -DLOCKED_SECTORS=$(LOCKED_SECTORS)UL
 
 # Add UART debugging.
 ifeq ($(UART),1)
