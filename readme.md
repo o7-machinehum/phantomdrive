@@ -84,3 +84,5 @@ iteration count affect the on-disk format, so firmware built with different
 settings cannot decrypt the same data without migration or reformatting.
 
 Unlock detection is also content-based. While the device is locked, any write data containing the string `password:` can be interpreted as an unlock attempt; the file does not need to be named `unlock.txt`.
+
+Shells may save commands in history so be aware when unlocking from the shell. Additionally, some text editors cache file contents in swap, autosave, or recovery files, etc... If you're using a text editor to enter your password disable this feature.
