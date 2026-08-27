@@ -76,6 +76,10 @@ password:YourPasswordHere13245
 ```
 On the same note, please ensure your text editor doesn't cash/backup files, if they do disable that or use a different editor.
 
+The first unlock attempt provisions the card; later incorrect passwords leave it locked.
+The final two SD sectors are reserved for unlock metadata. Back up existing cards
+before migrating; see [Fancy Unlock](ref/fancy_unlock.md) for the format and risks.
+
 # Releasing the hardware
 ``` bash
 ./scripts/release_hardware.sh

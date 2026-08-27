@@ -10,8 +10,9 @@
 #ifndef LOCKED_SECTORS
 #define LOCKED_SECTORS  (16777216UL)  /* 8 GiB in sectors */
 #endif
+#define PHANTOMDRIVE_METADATA_SECTORS 2
 
-void phantomdrive_init(uint64_t unique_id);
+bool phantomdrive_init(uint64_t unique_id);
 void phantomdrive_snoop_write(uint8_t *buf, uint32_t len);
 bool phantomdrive_get_unlock_pending(void);
 void phantomdrive_unlock(void);

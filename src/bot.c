@@ -67,6 +67,30 @@ static void bot_begin_cbw_transfer(void)
     g_bot.transfer_flags |= BOT_FLAG_CSW_PENDING;
 }
 
+static bool bot_cbw_has_valid_data_phase(void)
+{
+    uint8_t command = g_cbw_csw.mCBW.mCBW_CB_Buf[0];
+    bool host_reads = (g_cbw_csw.mCBW.mCBW_Flag & 0x80) != 0;
+
+    if (command == CMD_U_READ10 || command == CMD_U_WRITE10 ||
+        command == CMD_U_WR_VERIFY10) {
+        uint32_t sectors = (uint32_t)g_cbw_csw.mCBW.mCBW_CB_Buf[7] << 8;
+        sectors |= g_cbw_csw.mCBW.mCBW_CB_Buf[8];
+        if (g_bot.transfer_bytes_left != sectors * SECTOR_SIZE)
+            return false;
+        if (sectors == 0)
+            return true;
+        if (command == CMD_U_READ10)
+            return host_reads;
+        return !host_reads;
+    }
+
+    /* Non-write commands must not start SD writes using a previous LBA. */
+    if (g_bot.transfer_bytes_left != 0 && !host_reads)
+        return false;
+    return true;
+}
+
 static void bot_reject_invalid_cbw_signature(void)
 {
     bot_set_sense(SENSE_KEY_ILLEGAL_REQUEST, SENSE_ASC_INVALID_COMMAND,
@@ -88,17 +112,17 @@ static void scsi_copy_response_to_bot_buffer(const uint8_t *response,
     g_response_ptr = g_cbw_csw.buf;
 }
 
-static bool read10_accesses_hidden_sd_sectors(void)
+static bool rw10_accesses_out_of_range(void)
 {
     uint32_t lba = g_bot.current_lba;
     uint32_t sector_count = g_bot.transfer_bytes_left / SECTOR_SIZE;
 
     if (sector_count == 0)
         return false;
-    if (lba >= LOCKED_SECTORS)
+    if (lba >= g_bot.capacity)
         return true;
 
-    return sector_count > LOCKED_SECTORS - lba;
+    return sector_count > g_bot.capacity - lba;
 }
 
 static void scsi_parse_rw10_cdb(void)
@@ -151,7 +175,7 @@ static void scsi_handle_read_capacity(void)
 static void scsi_handle_read10(void)
 {
     scsi_parse_rw10_cdb();
-    if (phantomdrive_is_locked() && read10_accesses_hidden_sd_sectors()) {
+    if (rw10_accesses_out_of_range()) {
         bot_set_sense(SENSE_KEY_ILLEGAL_REQUEST, SENSE_ASC_LBA_OUT_OF_RANGE,
                       CSW_STATUS_FAILED);
         bot_stall_active_data_endpoints();
@@ -163,6 +187,11 @@ static void scsi_handle_read10(void)
 static void scsi_handle_write10(void)
 {
     scsi_parse_rw10_cdb();
+    if (rw10_accesses_out_of_range()) {
+        bot_set_sense(SENSE_KEY_ILLEGAL_REQUEST, SENSE_ASC_LBA_OUT_OF_RANGE,
+                      CSW_STATUS_FAILED);
+        bot_stall_active_data_endpoints();
+    }
     /* DATA_OUT remains set so the next EP1 OUT event starts the SD write. */
 }
 
@@ -333,6 +362,14 @@ static void bot_dispatch_scsi(void)
     }
 
     bot_begin_cbw_transfer();
+    /* Only validated disk commands may queue SD I/O. Other commands must
+     * never reuse a previous command's LBA through a bogus data phase. */
+    if (!bot_cbw_has_valid_data_phase()) {
+        bot_set_sense(SENSE_KEY_ILLEGAL_REQUEST, SENSE_ASC_INVALID_COMMAND,
+                      CSW_STATUS_PHASE_ERROR);
+        bot_stall_active_data_endpoints();
+        return;
+    }
     scsi_dispatch_command();
 }
 
@@ -356,6 +393,9 @@ void bot_handle_bulk_out(uint8_t *pbuf, uint16_t packlen)
     if (g_bot.transfer_flags & BOT_FLAG_DATA_OUT) {
         g_bot.write_pending = true;
     } else {
+        /* A second CBW must not replace the address of an active command. */
+        if (g_bot.transfer_flags & (BOT_FLAG_DATA_IN | BOT_FLAG_CSW_PENDING))
+            return;
         if (packlen == CBW_SIZE) {
             for (i = 0; i < packlen; i++)
                 g_cbw_csw.buf[i] = *pbuf++;

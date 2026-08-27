@@ -1,6 +1,23 @@
 # Tests
 These tests are used to verify the functionality of the device.
 
+## Unlock tests without hardware
+
+```bash
+make unlock_ctr_test unlock_xts_test
+./build/unlock_ctr_test
+./build/unlock_xts_test
+```
+
+These run the firmware's unlock, KDF, AES mode, and USB command handling against
+an in-memory card and OpenSSL-backed hardware stubs. They cover provisioning,
+wrong passwords followed by a correct retry, metadata I/O failures, readback
+verification, the existing split-password parser, the reserved custom-string
+field, and USB boundaries. The custom-string field is ignored and preserved;
+the unlock prefix remains `password:`.
+They do not validate physical DMA, SD timing, USB enumeration, or power loss.
+Repeat the unlock/power-cycle flow on a backed-up test card before using the firmware.
+
 ## Integrity Tests
 These are tests that verify the devices works as a flash drive, check speeds, read/writes are working etc.
 

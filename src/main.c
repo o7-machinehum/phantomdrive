@@ -70,7 +70,10 @@ int main()
 	log_printf("SD OK: %d sectors (%d MB)\r\n",
 		TF_EMMCParam.EMMCSecNum,
 		TF_EMMCParam.EMMCSecNum / 2048);
-	phantomdrive_init(unique_id.sn_64b);
+	if (!phantomdrive_init(unique_id.sn_64b)) {
+		log_printf("Phantomdrive metadata init FAILED\r\n");
+		while (1) {}
+	}
 	scsi_inquiry_set_identity(scsi_vendor, usb_product);
 
 	/* Expose USB only after the SD-backed volume is fully initialized. */

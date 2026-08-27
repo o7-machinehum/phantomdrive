@@ -2,6 +2,7 @@
 #include "phantomdrive_crypto.h"
 #include "bot_state.h"
 #include "CH56x_ecdc.h"
+#include <string.h>
 
 static uint32_t xts_data_key[8];
 static uint32_t xts_tweak_key[8];
@@ -28,9 +29,13 @@ static void xts_normalize_tweak(xts_block_t *tweak)
 void phantomdrive_crypto_unlock(const uint8_t *password, size_t pw_len,
                                 uint8_t salt[KDF_SALT_SIZE])
 {
+	uint8_t tweak_salt[KDF_SALT_SIZE];
+
 	derive_key(password, pw_len, salt, (uint8_t *)xts_data_key);
-	salt[0]++;
-	derive_key(password, pw_len, salt, (uint8_t *)xts_tweak_key);
+	/* Keep the original salt unchanged so password retries use the same keys. */
+	memcpy(tweak_salt, salt, sizeof(tweak_salt));
+	tweak_salt[0]++;
+	derive_key(password, pw_len, tweak_salt, (uint8_t *)xts_tweak_key);
 }
 
 static void xts_mul_alpha(xts_block_t *tweak)
