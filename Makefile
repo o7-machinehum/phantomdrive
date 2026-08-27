@@ -79,6 +79,7 @@ DEPS  = $(subst .o,.d,$(OBJS))
 LIBS  =
 
 BASE_OPTS = $(MARCH_OPT) -mabi=ilp32 -msmall-data-limit=8 $(OPTIM_OPTS) -fmessage-length=0 -fsigned-char -ffunction-sections -fdata-sections
+BASE_OPTS += -Werror=attributes
 C_OPTS    = $(BASE_OPTS) $(DEBUG) $(DEFINE_OPTS)\
               $(INCLUDES) -std=gnu99 -MMD -MP -MT"$(@)"
 LD_OPTS   = -T "src/link.ld" -nostartfiles -Xlinker --gc-sections -Xlinker --print-memory-usage -Wl,-Map,"$(PROJECT).map" --specs=nano.specs --specs=nosys.specs

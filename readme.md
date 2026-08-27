@@ -22,8 +22,8 @@ make # Build the ISP tool
 ```
 
 ## Install the toolchain
-The HydraUSB3 project requires a patched GCC that supports the
-`WCH-Interrupt-fast` interrupt attribute. Download the xpack GCC from the HydraUSB3 project:
+The HydraUSB3 project requires the patched HydraUSB3 xPack GCC 12.2.0-1, which
+supports the `WCH-Interrupt-fast` interrupt attribute:
 
 ```bash
 cd /tmp
