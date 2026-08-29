@@ -199,9 +199,6 @@ void msc_read_sectors(void)
 
     g_bot.current_lba += preqnum;
 
-    if (g_bot.transfer_bytes_left == 0)
-        bot_send_csw();
-
-    if (g_bot.transfer_bytes_left == 0x00)
-        g_bot.transfer_flags &= ~BOT_FLAG_DATA_IN;
+    bot_send_csw();
+    g_bot.transfer_flags &= ~BOT_FLAG_DATA_IN;
 }
