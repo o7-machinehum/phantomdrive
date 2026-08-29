@@ -4,7 +4,6 @@
 #ifndef EMMC_OPS_H_
 #define EMMC_OPS_H_
 
-#include <stdbool.h>
 #include "bot_state.h"
 #include "phantomdrive.h"
 
@@ -51,25 +50,6 @@ static inline void emmc_release_gap_stop(void)
 {
     __asm__ volatile("fence" ::: "memory");
     R32_EMMC_TRAN_MODE = (uint32_t)EMMC_TRAN_AUTOGAPSTOP;
-}
-
-/* Advance circular buffer DMA pointer. Returns 1 if buffer nearly full. */
-static inline bool emmc_advance_dma(uint8_t *buf_base,
-                                     uint8_t *sdstep_ptr,
-                                     uint16_t sdtran,
-                                     uint16_t usbtran)
-{
-    uint8_t sdstep = *sdstep_ptr;
-    sdstep++;
-    if (sdstep == UDISK_BUF_SIZE / SECTOR_SIZE) sdstep = 0;
-    *sdstep_ptr = sdstep;
-    R32_EMMC_DMA_BEG1 = (uint32_t)(buf_base + sdstep * SECTOR_SIZE);
-
-    if ((sdtran - usbtran) < ((UDISK_BUF_SIZE / SECTOR_SIZE) - 2)) {
-        emmc_release_gap_stop();
-        return false;
-    }
-    return true;
 }
 
 #endif /* EMMC_OPS_H_ */
