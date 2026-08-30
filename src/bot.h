@@ -13,9 +13,6 @@
 #include "bot_state.h"
 
 void bot_set_sense(uint8_t key, uint8_t asc, uint8_t status);
-void bot_stall_endpoints(void);
-void scsi_parse_rw10_cdb(void);
-void bot_dispatch_scsi(void);
 void bot_handle_bulk_in(void);
 void bot_handle_bulk_out(uint8_t *pbuf, uint16_t packlen);
 void bot_send_response_data(void);

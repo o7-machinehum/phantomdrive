@@ -31,7 +31,7 @@ usb_descriptor_usb_vid_pid_t vid_pid =
 };
 
 
-/* Init: GPIO/BSP -> UART -> USB -> SD -> main loop (bot_poll) */
+/* Init: GPIO/BSP -> UART -> SD -> PhantomDrive -> USB -> main loop */
 int main()
 {
 	bsp_gpio_init();
@@ -49,33 +49,30 @@ int main()
 
 	log_printf("Phantomdrive FW v1.0 (CPr Freq=%d MHz)\r\n", (FREQ_SYS/1000000));
 
-	R32_USB_CONTROL = 0;
-	usb_descriptor_set_string_serial_number(&unique_id);
-
-	usb_descriptor_set_usb_vid_pid(&vid_pid);
-	PFIC_EnableIRQ(USBHS_IRQn);
-	USB20_Device_Init(ENABLE);
-
 	log_printf("Initializing SD card...\r\n");
 	uint8_t sta = SDCardInit(&TF_EMMCParam);
+
+	if(sta != OP_SUCCESS)
+	{
+		log_printf("SD init FAILED (sta=%d)\r\n", sta);
+		while(1) {} // Something's wrong, sit here forever
+	}
 
 	/* Enable eMMC error IRQ after init (BKGAP/TRANDONE polled in data path) */
 	PFIC_EnableIRQ(EMMC_IRQn);
 	TF_EMMCParam.EMMCOpErr = 0;
 
-	if(sta == OP_SUCCESS)
-	{
-		g_bot.device_ready = true;
-		log_printf("SD OK: %d sectors (%d MB)\r\n",
-			TF_EMMCParam.EMMCSecNum,
-			TF_EMMCParam.EMMCSecNum / 2048);
-		phantomdrive_init(unique_id.sn_64b);
-	}
-	else
-	{
-		log_printf("SD init FAILED (sta=%d)\r\n", sta);
-		while(1) {} // Something's wrong, sit here forever
-	}
+	log_printf("SD OK: %d sectors (%d MB)\r\n",
+		TF_EMMCParam.EMMCSecNum,
+		TF_EMMCParam.EMMCSecNum / 2048);
+	phantomdrive_init(unique_id.sn_64b);
+
+	/* Expose USB only after the SD-backed volume is fully initialized. */
+	R32_USB_CONTROL = 0;
+	usb_descriptor_set_string_serial_number(&unique_id);
+	usb_descriptor_set_usb_vid_pid(&vid_pid);
+	PFIC_EnableIRQ(USBHS_IRQn);
+	USB20_Device_Init(ENABLE);
 
 	log_printf("MSC ready\r\n");
 	while(1)

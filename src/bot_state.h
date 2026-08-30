@@ -21,8 +21,6 @@ extern "C" {
 /* SCSI Sense Keys / ASC */
 #define SENSE_KEY_NO_ERROR              0x00
 #define SENSE_ASC_NO_ERROR              0x00
-#define SENSE_KEY_NOT_READY             0x02
-#define SENSE_ASC_MEDIUM_NOT_PRESENT    0x3A
 #define SENSE_KEY_MEDIUM_ERROR          0x03
 #define SENSE_ASC_WRITE_ERROR           0x0C
 #define SENSE_KEY_ILLEGAL_REQUEST       0x05
@@ -107,7 +105,6 @@ typedef union _BULK_ONLY_CMD {
 } BULK_ONLY_CMD;
 
 typedef struct {
-    volatile bool     device_ready;
     volatile uint8_t  transfer_flags;
     volatile uint32_t capacity;
     volatile uint8_t  cbw_tag[4];
