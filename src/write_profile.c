@@ -64,15 +64,13 @@ void write_profile_log(void)
             (unsigned long)write_profile_us(write_prof.sd_cycles),
             (unsigned long)write_profile_us(write_prof.dat0_cycles));
 
-    cprintf("Eprof calls=%lu req=%lu done=%lu bkgap=%lu acmd23=%lu/%luus cmd23=%lu/%luus cmd25=%lu/%luus data=%lu/%luus cmd12=%lu/%luus err=%lu/%lu/%lu/%lu/%lu/%lu\r\n",
+    cprintf("Eprof calls=%lu req=%lu done=%lu bkgap=%lu acmd23=%lu/%luus cmd25=%lu/%luus data=%lu/%luus cmd12=%lu/%luus err=%lu/%lu/%lu/%lu/%lu\r\n",
             (unsigned long)emmc_write_prof.calls,
             (unsigned long)emmc_write_prof.req_sectors,
             (unsigned long)emmc_write_prof.done_sectors,
             (unsigned long)emmc_write_prof.bkgaps,
             (unsigned long)write_profile_us(emmc_write_prof.acmd23_cycles),
             (unsigned long)write_profile_us(emmc_write_prof.acmd23_max_cycles),
-            (unsigned long)write_profile_us(emmc_write_prof.cmd23_cycles),
-            (unsigned long)write_profile_us(emmc_write_prof.cmd23_max_cycles),
             (unsigned long)write_profile_us(emmc_write_prof.cmd25_cycles),
             (unsigned long)write_profile_us(emmc_write_prof.cmd25_max_cycles),
             (unsigned long)write_profile_us(emmc_write_prof.data_cycles),
@@ -81,7 +79,6 @@ void write_profile_log(void)
             (unsigned long)write_profile_us(emmc_write_prof.cmd12_max_cycles),
             (unsigned long)emmc_write_prof.invalid_addr_errors,
             (unsigned long)emmc_write_prof.acmd23_errors,
-            (unsigned long)emmc_write_prof.cmd23_errors,
             (unsigned long)emmc_write_prof.cmd25_errors,
             (unsigned long)emmc_write_prof.data_errors,
             (unsigned long)emmc_write_prof.cmd12_errors);

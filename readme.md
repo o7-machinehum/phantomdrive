@@ -66,8 +66,15 @@ The four builds are written to `build/CTR_100K`, `build/CTR_600K`,
 
 ## Unlocking Drive
 ``` bash
+# This will keep your password in bash history, but fine for testing/insecure
 sudo echo "password:YourPasswordHere13245" > /mnt/unlock.txt
+
+# Or avoid keeping the password is bash history
+sudo dd of=/mnt/unlock.txt
+password:YourPasswordHere13245
+^D # ctrl+d
 ```
+On the same note, please ensure your text editor doesn't cash/backup files, if they do disable that or use a different editor.
 
 # Releasing the hardware
 ``` bash

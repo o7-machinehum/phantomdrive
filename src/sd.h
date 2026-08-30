@@ -21,11 +21,4 @@
 /* Full SD card init using the fixed board timing configuration. */
 uint8_t SDCardInit(PSD_PARAMETER pEMMCPara);
 
-/* Individual init steps (called internally by SDCardInit): */
-uint8_t SDReadOCR(PSD_PARAMETER pEMMCPara);       /* ACMD41 - negotiate voltage/capacity */
-uint8_t SDSetRCA(PSD_PARAMETER pEMMCPara);         /* CMD3 - get relative card address */
-uint8_t SDReadCSD(PSD_PARAMETER pEMMCPara);        /* CMD9 - read Card Specific Data */
-uint8_t SDSetBusWidth(PSD_PARAMETER pEMMCPara, uint8_t bus_mode);  /* ACMD6 - set 1/4-bit */
-uint8_t SD_ReadSCR(PSD_PARAMETER pEMMCPara, uint8_t *pRdatbuf);   /* ACMD51 - read SCR */
-
 #endif

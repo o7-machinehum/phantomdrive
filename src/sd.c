@@ -36,17 +36,40 @@
 #include "debug.h"
 #include <string.h>
 
-/* Scratch buffer for SCR register read (8 bytes needed, 512 allocated for
- * DMA alignment requirements). Must be in RAMX for DMA access.
- * [CH569DS1.PDF: DMA buffers must be in RAMX (.DMADATA section)] */
-static __attribute__((aligned(8))) uint8_t scr_buf[512] __attribute__((section(".DMADATA")));
-
 #define SD_SWITCH_STATUS_LEN        64
+
+/* Largest response is the 64-byte CMD6 status. CH569 DMA requires a 16-byte
+ * aligned address in RAMX. */
+static __attribute__((aligned(16))) uint8_t scr_buf[SD_SWITCH_STATUS_LEN]
+	__attribute__((section(".DMADATA")));
+
 #define SD_CMD6_CHECK_HIGH_SPEED    0x00FFFFF1u
 #define SD_CMD6_SET_HIGH_SPEED      0x80FFFFF1u
 #define SD_SWITCH_G1_HIGH_SPEED     0x02
 #define SD_SWITCH_G1_RESULT_MASK    0x0F
 #define SD_HIGH_SPEED_CLK_DIV       EMMCCLK_48  /* 480MHz / 10 = 48MHz */
+#define SD_R1_ERROR_MASK            0xfff98008u
+#define SD_R1_APP_CMD               (1u << 5)
+#define SD_EMMC_ERROR_FLAGS         (RB_EMMC_IF_FIFO_OV | RB_EMMC_IF_TRANERR | \
+									 RB_EMMC_IF_DATTMO | RB_EMMC_IF_REIDX_ER | \
+									 RB_EMMC_IF_RECRC_WR | RB_EMMC_IF_RE_TMOUT)
+
+static uint8_t SD_WaitCommand(PSD_PARAMETER pEMMCPara)
+{
+	uint16_t flags;
+
+	while(1)
+	{
+		flags = R16_EMMC_INT_FG;
+		if(pEMMCPara->EMMCOpErr || (flags & SD_EMMC_ERROR_FLAGS))
+			return CMD_FAILED;
+		if(flags & RB_EMMC_IF_CMDDONE)
+		{
+			R16_EMMC_INT_FG = RB_EMMC_IF_CMDDONE;
+			return CMD_SUCCESS;
+		}
+	}
+}
 
 /*******************************************************************************
  * SDReadOCR - Read SD card Operating Conditions Register via ACMD41
@@ -66,7 +89,7 @@ static __attribute__((aligned(8))) uint8_t scr_buf[512] __attribute__((section("
  *
  * [ref/SD_Physical_Layer_Spec_v6.00.pdf: Section 4.2.3 - ACMD41]
  ******************************************************************************/
-uint8_t SDReadOCR(PSD_PARAMETER pEMMCPara)
+static uint8_t SDReadOCR(PSD_PARAMETER pEMMCPara)
 {
 	uint8_t  i;
 	uint32_t cmd_arg_val;
@@ -136,7 +159,7 @@ uint8_t SDReadOCR(PSD_PARAMETER pEMMCPara)
  *
  * [ref/SD_Physical_Layer_Spec_v6.00.pdf: Section 4.3.1 - CMD3]
  ******************************************************************************/
-uint8_t SDSetRCA(PSD_PARAMETER pEMMCPara)
+static uint8_t SDSetRCA(PSD_PARAMETER pEMMCPara)
 {
 	uint32_t cmd_arg_val;
 	uint16_t cmd_set_val;
@@ -173,7 +196,7 @@ uint8_t SDSetRCA(PSD_PARAMETER pEMMCPara)
  *
  * [ref/SD_Physical_Layer_Spec_v6.00.pdf: Section 5.3 - CSD Register]
  ******************************************************************************/
-uint8_t SDReadCSD(PSD_PARAMETER pEMMCPara)
+static uint8_t SDReadCSD(PSD_PARAMETER pEMMCPara)
 {
 	uint32_t cmd_arg_val;
 	uint16_t cmd_set_val;
@@ -235,7 +258,7 @@ uint8_t SDReadCSD(PSD_PARAMETER pEMMCPara)
  * ACMD6 arg: 0x0 = 1-bit, 0x2 = 4-bit
  * [ref/SD_Physical_Layer_Spec_v6.00.pdf: Section 4.3.10 - ACMD6]
  ******************************************************************************/
-uint8_t SDSetBusWidth(PSD_PARAMETER pEMMCPara, uint8_t bus_mode)
+static uint8_t SDSetBusWidth(PSD_PARAMETER pEMMCPara, uint8_t bus_mode)
 {
 	uint32_t cmd_arg_val;
 	uint16_t cmd_set_val;
@@ -281,21 +304,24 @@ uint8_t SDSetBusWidth(PSD_PARAMETER pEMMCPara, uint8_t bus_mode)
  * Read as a single 8-byte data block via DMA.
  * [ref/SD_Physical_Layer_Spec_v6.00.pdf: Section 5.6 - SCR Register]
  ******************************************************************************/
-uint8_t SD_ReadSCR(PSD_PARAMETER pEMMCPara, uint8_t *pRdatbuf)
+static uint8_t SD_ReadSCR(PSD_PARAMETER pEMMCPara, uint8_t *pRdatbuf)
 {
 	uint32_t cmd_arg_val;
 	uint16_t cmd_set_val, t;
 	uint8_t  sta;
 
+	pEMMCPara->EMMCOpErr = 0;
+	R16_EMMC_INT_FG = 0xffff;
+
 	/* CMD55 - APP_CMD prefix */
-	cmd_arg_val = (pEMMCPara->EMMC_RCA) << 16;
+	cmd_arg_val = ((uint32_t)pEMMCPara->EMMC_RCA) << 16;
 	cmd_set_val = RB_EMMC_CKIDX | RB_EMMC_CKCRC | RESP_TYPE_48 | 55;
 	EMMCSendCmd(cmd_arg_val, cmd_set_val);
-	while(1)
-	{
-		sta = CheckCMDComp(pEMMCPara);
-		if(sta != CMD_NULL) break;
-	}
+	sta = SD_WaitCommand(pEMMCPara);
+	if(sta == CMD_SUCCESS &&
+	   ((R32_EMMC_RESPONSE3 & SD_R1_ERROR_MASK) ||
+	    !(R32_EMMC_RESPONSE3 & SD_R1_APP_CMD)))
+		sta = CMD_FAILED;
 
 	if(sta == CMD_SUCCESS)
 	{
@@ -309,20 +335,30 @@ uint8_t SD_ReadSCR(PSD_PARAMETER pEMMCPara, uint8_t *pRdatbuf)
 		cmd_arg_val = 0;
 		cmd_set_val = RB_EMMC_CKIDX | RB_EMMC_CKCRC | RESP_TYPE_48 | 51;
 		EMMCSendCmd(cmd_arg_val, cmd_set_val);
-		while(1)
-		{
-			sta = CheckCMDComp(pEMMCPara);
-			if(sta != CMD_NULL) break;
-		}
+		sta = SD_WaitCommand(pEMMCPara);
+		if(sta == CMD_SUCCESS && (R32_EMMC_RESPONSE3 & SD_R1_ERROR_MASK))
+			sta = CMD_FAILED;
+	}
+
+	if(sta == CMD_SUCCESS)
+	{
 		/* Wait for DMA transfer to complete */
 		while(1)
 		{
 			if(R16_EMMC_INT_FG & RB_EMMC_IF_TRANDONE) break;
+			if(pEMMCPara->EMMCOpErr ||
+			   (R16_EMMC_INT_FG & SD_EMMC_ERROR_FLAGS))
+			{
+				sta = CMD_FAILED;
+				break;
+			}
 		}
-		/* Clear all interrupt flags */
-		t = R16_EMMC_INT_FG;
-		R16_EMMC_INT_FG = t;
 	}
+
+	/* Clear command, data, and any error flags before the next init step. */
+	t = R16_EMMC_INT_FG;
+	R16_EMMC_INT_FG = t;
+	pEMMCPara->EMMCOpErr = 0;
 
 	return sta;
 }
