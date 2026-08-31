@@ -30,6 +30,8 @@ usb_descriptor_usb_vid_pid_t vid_pid =
 	.pid = { .id_16b = 0x2833 }
 };
 
+static const char usb_product[] = "Phantomdrive";
+
 
 /* Init: GPIO/BSP -> UART -> SD -> PhantomDrive -> USB -> main loop */
 int main()
@@ -71,6 +73,7 @@ int main()
 	R32_USB_CONTROL = 0;
 	usb_descriptor_set_string_serial_number(&unique_id);
 	usb_descriptor_set_usb_vid_pid(&vid_pid);
+	usb_descriptor_set_string_product(usb_product);
 	PFIC_EnableIRQ(USBHS_IRQn);
 	USB20_Device_Init(ENABLE);
 
