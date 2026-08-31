@@ -346,6 +346,7 @@ void bot_handle_bulk_in(void)
     }
 }
 
+/* Called by USBHS_IRQHandler */
 void bot_handle_bulk_out(uint8_t *pbuf, uint16_t packlen)
 {
     uint32_t i;
