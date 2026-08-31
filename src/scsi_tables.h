@@ -18,4 +18,6 @@ extern uint8_t const  g_read_capacity_response[];
 extern uint8_t const  g_mode_sense6_response[];
 extern uint8_t const  g_mode_sense10_response[];
 
+void scsi_inquiry_set_identity(const char *vendor, const char *product);
+
 #endif /* SCSI_TABLES_H_ */

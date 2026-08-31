@@ -8,6 +8,7 @@
 #include "CH56x_usb_devbulk_desc_cmd.h"
 
 #include "bot.h"
+#include "scsi_tables.h"
 #include "sd.h"
 #include "phantomdrive.h"
 #include "crypto.h"
@@ -31,6 +32,8 @@ usb_descriptor_usb_vid_pid_t vid_pid =
 };
 
 static const char usb_product[] = "Phantomdrive";
+static const char usb_vendor[] = "Rootkitlabs";
+static const char scsi_vendor[] = "RKlabs"; /* SCSI vendor is limited to 8 characters. */
 
 
 /* Init: GPIO/BSP -> UART -> SD -> PhantomDrive -> USB -> main loop */
@@ -68,11 +71,13 @@ int main()
 		TF_EMMCParam.EMMCSecNum,
 		TF_EMMCParam.EMMCSecNum / 2048);
 	phantomdrive_init(unique_id.sn_64b);
+	scsi_inquiry_set_identity(scsi_vendor, usb_product);
 
 	/* Expose USB only after the SD-backed volume is fully initialized. */
 	R32_USB_CONTROL = 0;
 	usb_descriptor_set_string_serial_number(&unique_id);
 	usb_descriptor_set_usb_vid_pid(&vid_pid);
+	usb_descriptor_set_string_vendor(usb_vendor);
 	usb_descriptor_set_string_product(usb_product);
 	PFIC_EnableIRQ(USBHS_IRQn);
 	USB20_Device_Init(ENABLE);

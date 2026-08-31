@@ -13,6 +13,28 @@ uint8_t g_inquiry_response[] =
     '1', '.', '0', ' '                        /* Revision: 4 bytes */
 };
 
+static void scsi_inquiry_set_field(uint8_t offset, uint8_t length, const char *text)
+{
+    uint8_t i = 0;
+
+    while((i < length) && (text[i] != '\0'))
+    {
+        g_inquiry_response[offset + i] = (uint8_t)text[i];
+        i++;
+    }
+    while(i < length)
+    {
+        g_inquiry_response[offset + i] = ' ';
+        i++;
+    }
+}
+
+void scsi_inquiry_set_identity(const char *vendor, const char *product)
+{
+    scsi_inquiry_set_field(8, 8, vendor);
+    scsi_inquiry_set_field(16, 16, product);
+}
+
 /* Bytes 4-7 overridden at runtime with actual capacity */
 uint8_t const g_format_capacity_response[] =
 {
