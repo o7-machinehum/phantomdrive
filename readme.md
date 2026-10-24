@@ -90,6 +90,6 @@ PBKDF2-HMAC-SHA256 and either 100,000 or 600,000 iterations. AES mode and KDF
 iteration count affect the on-disk format, so firmware built with different
 settings cannot decrypt the same data without migration or reformatting.
 
-Unlock detection is also content-based. While the device is locked, any write data containing the string `password:` can be interpreted as an unlock attempt; the file does not need to be named `unlock.txt`.
+Unlocking accepts any file of up to 256 bytes in the root directory containing `password:YourPassword`; `password:` is reserved across the locked volume, and values following it are captured in RAM and zeroed before SD writes. FatFs deletes the matching file before unlocking and creates FAT32 at startup if the decoy volume does not already contain FAT32.
 
 Shells may save commands in history so be aware when unlocking from the shell. Additionally, some text editors cache file contents in swap, autosave, or recovery files, etc... If you're using a text editor to enter your password disable this feature.

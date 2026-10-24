@@ -87,7 +87,7 @@ static uint8_t write_received_chunk(uint8_t *buf, uint32_t lba, uint16_t chunk_s
     write_profile_count_chunk();
 
     if(phantomdrive_is_locked()) {
-        phantomdrive_snoop_write(buf, (uint32_t)chunk_sectors * SECTOR_SIZE);
+        phantomdrive_snoop_write(buf, (uint32_t)chunk_sectors * SECTOR_SIZE, lba);
     }
 
     write_profile_add_snoop(prof_start);

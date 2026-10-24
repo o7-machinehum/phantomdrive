@@ -11,7 +11,7 @@ extern void bot_send_csw(void);
 #define READ_RING_SECTORS (UDISK_BUF_SIZE / SECTOR_SIZE)
 
 /*
-  READ10 ring buffer: UDisk_In_Buf, 80 slots x 512 bytes
+  READ10 ring buffer: UDisk_In_Buf, 60 slots x 512 bytes
 
             USB sends older ready slot
                       |

@@ -11,6 +11,7 @@
 #include "scsi_tables.h"
 #include "sd.h"
 #include "phantomdrive.h"
+#include "unlock_file.h"
 #include "crypto.h"
 
 #undef FREQ_SYS
@@ -71,6 +72,8 @@ int main()
 		TF_EMMCParam.EMMCSecNum,
 		TF_EMMCParam.EMMCSecNum / 2048);
 	phantomdrive_init(unique_id.sn_64b);
+	if (!unlock_file_init())
+		log_printf("FAT32 unavailable; format the decoy drive from the host\r\n");
 	scsi_inquiry_set_identity(scsi_vendor, usb_product);
 
 	/* Expose USB only after the SD-backed volume is fully initialized. */

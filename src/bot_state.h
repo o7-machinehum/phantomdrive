@@ -16,7 +16,8 @@ extern "C" {
 #define CBW_SIZE                31
 #define CSW_SIZE                13
 #define INQUIRY_RESPONSE_SIZE   36
-#define UDISK_BUF_SIZE          (1024 * 4 * 10)  /* 40KB = 80 sectors */
+/* Two 30 KiB buffers leave room for USB and SD DMA within 64 KiB RAMX. */
+#define UDISK_BUF_SIZE          (1024 * 30)  /* 30KB = 60 sectors */
 
 /* SCSI Sense Keys / ASC */
 #define SENSE_KEY_NO_ERROR              0x00

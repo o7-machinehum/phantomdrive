@@ -73,6 +73,9 @@ USER_AES_SRCS = $(USER_DIR)/phantomdrive_aes_ctr.c $(USER_DIR)/phantomdrive_aes_
 USER_SRCS = $(filter-out $(USER_AES_SRCS),$(wildcard $(USER_DIR)/*.c)) $(AES_SRCS)
 OBJS     += $(patsubst $(USER_DIR)/%.c,$(BUILD_DIR)/%.o,$(USER_SRCS))
 
+FATFS_DIR = ./third_party/fatfs
+OBJS += $(BUILD_DIR)/fatfs.o
+
 # All of the sources participating in the build are defined here
 OBJS += $(BUILD_DIR)/startup_CH56x.o
 DEPS  = $(subst .o,.d,$(OBJS))
@@ -89,7 +92,8 @@ INCLUDES = \
   -I"$(DRV_DIR)" \
   -I"$(BOARD_DIR)" \
   -I"$(USB_DIR)" \
-  -I"$(USER_DIR)"
+  -I"$(USER_DIR)" \
+  -I"$(FATFS_DIR)"
 
 # Add inputs and outputs from these tool invocations to the build variables
 SECONDARY_FLASH += $(PROJECT).hex $(PROJECT).bin
@@ -123,6 +127,11 @@ $(BUILD_DIR)/%.o: ./src/%.c | $$(@D)/.
 	@echo 'Building file: $<'
 	$(COMPILER_PREFIX)-gcc $(C_OPTS) -c -o "$@" "$<"
 	@echo ' '
+
+$(BUILD_DIR)/fatfs.o: $(FATFS_DIR)/ff.c | $$(@D)/.
+	$(COMPILER_PREFIX)-gcc $(C_OPTS) -c -o "$@" "$<"
+
+$(BUILD_DIR)/fatfs.o $(BUILD_DIR)/unlock_file.o $(BUILD_DIR)/unlock_file_diskio.o: $(FATFS_DIR)/ff.h $(FATFS_DIR)/ffconf.h
 
 $(BUILD_DIR)/%.o: ./wch-ch56x-bsp/rvmsis/%.c | $$(@D)/.
 	@echo 'Building file: $<'

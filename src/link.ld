@@ -13,9 +13,10 @@ PROVIDE( _stack_size = __stack_size );
 
 MEMORY
 {
-	FLASH (rx) : ORIGIN = 0x00000000, LENGTH = 448K
+	/* The ISP tool selects 64 KiB RAMX for firmware between 32 and 64 KiB. */
+	FLASH (rx) : ORIGIN = 0x00000000, LENGTH = 64K - 1
 	RAM (xrw) : ORIGIN = 0x20000000, LENGTH = 16K
-	RAMX (xrw) : ORIGIN = 0x20020000, LENGTH = 96K
+	RAMX (xrw) : ORIGIN = 0x20020000, LENGTH = 64K
 }
 
 
