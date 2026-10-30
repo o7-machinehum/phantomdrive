@@ -1,8 +1,8 @@
 ![](img/Logo_white_big.png)
 
-Phantomdrive is open source encrypted USB drive with a stealth mechanism to hide its second partition. To decrypt it you must create a file containing your password in the format `password:addpasswordhere`, this is used to derive AES-XTS keys. The drive automatically unmounts itself, remounts the remaining disk and encrypts and decrypts in place. It uses CH569W SoC, which has USB3, SDIO and an AES hardware block. It is programmable over USB using the `wch-ch56x-isp` library.
+[>>> Buy Hardware <<<](https://shop.rootkitlabs.com/products/phantomdrive)
 
-[>>> Buy Hardware <<<]([url](https://shop.rootkitlabs.com/products/phantomdrive))
+Phantomdrive is open source encrypted USB drive with a stealth mechanism to hide its second partition. To decrypt it you must create a file containing your password in the format `password:addpasswordhere`, this is used to derive AES-XTS keys. The drive automatically unmounts itself, remounts the remaining disk and encrypts and decrypts in place. It uses CH569W SoC, which has USB3, SDIO and an AES hardware block. It is programmable over USB using the `wch-ch56x-isp` library.
 
 ``` bash
 |-- ee             # Hardware files
